@@ -85,6 +85,8 @@ export default function Page(){
   const [showRatePrompt,setShowRatePrompt]=useState(false)
   const [installPrompt,setInstallPrompt]=useState<any>(null)
   const [showReferral,setShowReferral]=useState(false)
+  const [reportMonth,setReportMonth]=useState('2026-09')
+  const [showMonthPicker,setShowMonthPicker]=useState(false)
 
   // smooth flexible navigation
   function navigateTo(v:View){
@@ -230,6 +232,74 @@ export default function Page(){
     }
   },[txns.length])
 
+  // AdMob - high revenue smart (free SDK, no backend)
+  const interstitialCountRef=useRef(0)
+  const lastInterstitialRef=useRef(0)
+  useEffect(()=>{
+    const isNative=(window as any).Capacitor?.isNativePlatform?.()
+    if(!isNative) return
+    ;(async()=>{
+      try{
+        const { AdMob } = await import('@capacitor-community/admob')
+        await AdMob.initialize({ requestTrackingAuthorization:true, initializeForTesting:false })
+        // App Open High eCPM - prepare
+        try{ await (AdMob as any).prepareAppOpenAd?.({ adId:'ca-app-pub-1607968585289432/6998555510' }) }catch{}
+      }catch(e){ console.log('AdMob init',e) }
+    })()
+  },[])
+  // Banner adaptive bottom - show on Home/Customers/Reports (high viewability)
+  useEffect(()=>{
+    const isNative=(window as any).Capacitor?.isNativePlatform?.()
+    if(!isNative) return
+    if(!['home','customers','reports'].includes(view)) return
+    ;(async()=>{
+      try{
+        const { AdMob, BannerAdSize, BannerAdPosition } = await import('@capacitor-community/admob')
+        await AdMob.removeBanner().catch(()=>{})
+        const opts:any={ adId:'ca-app-pub-1607968585289432/3656322283', adSize: BannerAdSize.ADAPTIVE_BANNER, position: BannerAdPosition.BOTTOM_CENTER, margin:64, isTesting:false }
+        await AdMob.showBanner(opts)
+      }catch{}
+    })()
+    return ()=>{ (async()=>{ try{ const {AdMob}=await import('@capacitor-community/admob'); await AdMob.removeBanner().catch(()=>{}) }catch{} })() }
+  },[view])
+  async function showAppOpenAd(){
+    try{
+      const { AdMob } = await import('@capacitor-community/admob')
+      const isNative=(window as any).Capacitor?.isNativePlatform?.()
+      if(!isNative) return
+      try{ await (AdMob as any).showAppOpenAd?.() }catch{ // fallback try prepare then show
+        try{ await (AdMob as any).prepareAppOpenAd?.({ adId:'ca-app-pub-1607968585289432/6998555510' }); await (AdMob as any).showAppOpenAd?.() }catch{}
+      }
+    }catch{}
+  }
+  async function showInterstitialSmart(){
+    const now=Date.now()
+    if(now - lastInterstitialRef.current < 120000) return // 2 min cap - policy safe
+    interstitialCountRef.current++
+    if(interstitialCountRef.current % 3 !== 0) return // every 3rd save - high revenue without annoy
+    lastInterstitialRef.current=now
+    try{
+      const { AdMob } = await import('@capacitor-community/admob')
+      const opts:any={ adId:'ca-app-pub-1607968585289432/2091959177', isTesting:false }
+      await AdMob.prepareInterstitial(opts)
+      await AdMob.showInterstitial()
+    }catch{}
+  }
+  async function showRewardedAd(onReward:()=>void){
+    try{
+      const { AdMob } = await import('@capacitor-community/admob')
+      const isNative=(window as any).Capacitor?.isNativePlatform?.()
+      if(!isNative){ onReward(); return }
+      const opts:any={ adId:'ca-app-pub-1607968585289432/8717077271', isTesting:false }
+      await AdMob.prepareRewardVideoAd(opts)
+      const handler = async (reward:any)=>{ onReward(); showToast('Reward unlocked!') }
+      // @ts-ignore
+      AdMob.addListener('onRewardedVideoAdReward' as any, handler)
+      await AdMob.showRewardVideoAd()
+      setTimeout(()=>{ try{ (AdMob as any).removeAllListeners?.() }catch{} }, 30000)
+    }catch{ onReward() }
+  }
+
   function showToast(msg:string){ setToast(msg); setTimeout(()=>setToast(null),2200) }
 
   function handleKey(v:string){
@@ -255,6 +325,7 @@ export default function Page(){
     setAmount(''); setDesc('')
     navigateTo('receipt')
     showToast(isGive? 'Given recorded':'Received recorded')
+    setTimeout(()=>showInterstitialSmart(), 800)
   }
 
   async function saveBlobNative(blob:Blob, fileName:string){
@@ -385,19 +456,26 @@ export default function Page(){
     showToast('PDF downloaded — attach in WhatsApp')
   }
   async function customerReportPdf(){
-    const pdf=new jsPDF({unit:'mm',format:'a4'})
-    pdf.setFillColor(14,138,90); pdf.rect(0,0,210,28,'F'); pdf.setTextColor(255,255,255); pdf.setFont('helvetica','bold'); pdf.setFontSize(16); pdf.text('HisabJod - Customer Report',15,18)
-    pdf.setTextColor(30,30,30); pdf.setFontSize(10); let y=40; customers.forEach(c=>{ pdf.text(`${c.name} - ${c.phone} - ${c.balance>0?'Receivable '+formatINR(c.balance): c.balance<0?'Payable '+formatINR(-c.balance):'Settled'}`,15,y); y+=7; if(y>280){ pdf.addPage(); y=20 } })
-    const blob = pdf.output('blob') as Blob
-    if(await saveBlobNative(blob,'customer-report.pdf')) return
-    pdf.save('customer-report.pdf'); showToast('Customer report PDF saved')
+    const doExport=async()=>{
+      const pdf=new jsPDF({unit:'mm',format:'a4'})
+      pdf.setFillColor(14,138,90); pdf.rect(0,0,210,28,'F'); pdf.setTextColor(255,255,255); pdf.setFont('helvetica','bold'); pdf.setFontSize(16); pdf.text('HisabJod - Customer Report',15,18)
+      pdf.setTextColor(30,30,30); pdf.setFontSize(10); let y=40; customers.forEach(c=>{ pdf.text(`${c.name} - ${c.phone} - ${c.balance>0?'Receivable '+formatINR(c.balance): c.balance<0?'Payable '+formatINR(-c.balance):'Settled'}`,15,y); y+=7; if(y>280){ pdf.addPage(); y=20 } })
+      const blob = pdf.output('blob') as Blob
+      if(await saveBlobNative(blob,'customer-report.pdf')) return
+      pdf.save('customer-report.pdf'); showToast('Customer report PDF saved')
+    }
+    // Rewarded high eCPM - watch ad to unlock report
+    await showRewardedAd(doExport)
   }
   async function exportCSV(){
-    const header='Name,Phone,Balance,Given,Received\n'
-    const rows=customers.map(c=>`"${c.name}","${c.phone}",${c.balance},${c.totalGiven},${c.totalReceived}`).join('\n')
-    const blob=new Blob([header+rows],{type:'text/csv'})
-    await downloadBlob(blob,'HisabJod-customers.csv')
-    showToast('CSV exported')
+    const doExport=async()=>{
+      const header='Name,Phone,Balance,Given,Received\n'
+      const rows=customers.map(c=>`"${c.name}","${c.phone}",${c.balance},${c.totalGiven},${c.totalReceived}`).join('\n')
+      const blob=new Blob([header+rows],{type:'text/csv'})
+      await downloadBlob(blob,'HisabJod-customers.csv')
+      showToast('CSV exported')
+    }
+    await showRewardedAd(doExport)
   }
 
   function addCustomer(){
@@ -491,6 +569,7 @@ export default function Page(){
             </div>
             <button onClick={()=>{
               if(lockEnabled && storedPin){ navigateTo('home'); setIsLocked(true); } else navigateTo('home')
+              setTimeout(()=>showAppOpenAd(), 900)
             }} className="w-full mt-6 bg-[#0e8a5a] hover:bg-[#0a6b44] text-white rounded-full py-[14px] font-bold text-[14px] flex items-center justify-center gap-2 shadow-[0_8px_20px_rgba(14,138,90,.3)] btn-press">
               Get Started <ArrowUpRight size={16} />
             </button>
@@ -602,6 +681,12 @@ export default function Page(){
                 }} className="px-3 py-1.5 rounded-full bg-[#0e8a5a] text-white text-[10px] font-bold">Invite</button>
               </div>
             </div>
+            {/* Banner Ad - Adaptive (high revenue, 30s refresh) */}
+            <div className="mx-3 mt-1 p-2 rounded-[8px] border border-dashed border-[#cfe3d9] bg-[#f2f7f4] text-center">
+              <p className="text-[8px] font-bold tracking-widest text-[#6b7c77]">ADVERTISEMENT</p>
+              <p className="text-[9px] text-[#0e8a5a] font-mono">banner_hisab • ca-app-pub-1607968585289432/3656322283</p>
+              <p className="text-[8px] text-[#6b7c77]">Adaptive Banner • Native shows on device via AdMob</p>
+            </div>
             <div className="page-enter flex-1 px-4 pt-3 pb-20 overflow-auto scrollbar-hide">
               <div className="flex justify-between items-center mb-2">
                 <h3 className={`text-[13px] font-bold ${dark?'text-white':''}`}>Recent Transactions</h3>
@@ -618,7 +703,13 @@ export default function Page(){
                     <span className={`text-[11px] font-extrabold ${t.type==='received'?'text-emerald-600':'text-red-500'}`}>{t.type==='received'?'+': '-'}{formatINR(t.amount)}</span>
                   </button>
                 ))}
-                {txns.length===0 && <p className="text-[11px] text-center text-[#6b7c77] py-6">No transactions yet</p>}
+                {txns.length===0 && (
+                  <div className="flex flex-col items-center py-6">
+                    <img src="/illustrations/09-no-transactions.png" alt="No Transactions" className="w-36 h-36 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                    <p className="text-[13px] font-bold mt-2">No Transactions Yet</p>
+                    <p className="text-[11px] text-[#6b7c77] text-center">Your transactions will<br/>appear here</p>
+                  </div>
+                )}
               </div>
             </div>
           </>
@@ -644,21 +735,39 @@ export default function Page(){
               </div>
             </div>
             <div className="flex-1 overflow-auto px-3 py-2 space-y-2 pb-20 scrollbar-hide">
-              {filtered.map(c=>(
-                <button key={c.id} onClick={()=>{setSelectedId(c.id);setDetailTab('txns');navigateTo('customer-detail')}} className={`w-full text-left flex items-center gap-3 p-3 rounded-[14px] border ${card} hover:shadow-md transition`}>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[11px]" style={{background:c.color}}>{c.initials}</div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-[12px] font-bold truncate ${dark?'text-white':''}`}>{c.name}</p>
-                    <p className="text-[10px] text-[#6b7c77]">{c.phone}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-[12px] font-extrabold ${c.balance>0?'text-emerald-600':c.balance<0?'text-red-500':'text-[#6b7c77]'}`}>{c.balance===0?'₹0':formatINR(Math.abs(c.balance))}</p>
-                    <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold ${c.balance>0?'bg-emerald-100 text-emerald-700':c.balance<0?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>{c.balance>0?'Receivable':c.balance<0?'Payable':'Settled'}</span>
-                  </div>
-                  <ChevronRight size={14} className="text-[#6b7c77] shrink-0" />
-                </button>
+              {filtered.map((c,i)=>(
+                <div key={c.id}>
+                  <button onClick={()=>{setSelectedId(c.id);setDetailTab('txns');navigateTo('customer-detail')}} className={`w-full text-left flex items-center gap-3 p-3 rounded-[14px] border ${card} hover:shadow-md transition card-press`}>
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[11px]" style={{background:c.color}}>{c.initials}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[12px] font-bold truncate ${dark?'text-white':''}`}>{c.name}</p>
+                      <p className="text-[10px] text-[#6b7c77]">{c.phone}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-[12px] font-extrabold ${c.balance>0?'text-emerald-600':c.balance<0?'text-red-500':'text-[#6b7c77]'}`}>{c.balance===0?'₹0':formatINR(Math.abs(c.balance))}</p>
+                      <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold ${c.balance>0?'bg-emerald-100 text-emerald-700':c.balance<0?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>{c.balance>0?'Receivable':c.balance<0?'Payable':'Settled'}</span>
+                    </div>
+                    <ChevronRight size={14} className="text-[#6b7c77] shrink-0" />
+                  </button>
+                  {i===2 && (
+                    <div className={`${card} border rounded-[12px] p-3 mt-2 flex flex-col items-center justify-center bg-gradient-to-r from-[#e6f3ec] via-white to-[#e6f3ec] text-center`}>
+                      <p className="text-[8px] font-bold tracking-widest text-[#6b7c77]">NATIVE AD</p>
+                      <p className="text-[9px] text-[#0e8a5a] font-mono">Native_hisabjob • 7712871386</p>
+                      <p className="text-[10px] font-bold mt-1">HisabJod Pro — Unlock premium</p>
+                      <button onClick={()=>showRewardedAd(()=>showToast('Pro unlocked!'))} className="mt-2 px-3 py-1 rounded-full bg-[#0e8a5a] text-white text-[9px] font-bold">Watch Rewarded Ad</button>
+                    </div>
+                  )}
+                </div>
               ))}
-              {filtered.length===0 && <p className="text-center text-[11px] text-[#6b7c77] py-10">No customers found</p>}
+              {filtered.length===0 && (
+                <div className="flex flex-col items-center py-8">
+                  <img src="/illustrations/08-no-customers.png" alt="No Customers" className="w-40 h-40 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <p className="text-[13px] font-bold mt-3">No Customers Yet</p>
+                  <p className="text-[11px] text-[#6b7c77] text-center">Add your first customer<br/>to start your khata</p>
+                  <button onClick={()=>setShowAddCust(true)} className="mt-3 px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[11px] font-bold">Add Customer</button>
+                  <p className="text-[9px] text-[#6b7c77] mt-2">Illustration 08 • Save as 08-no-customers.png</p>
+                </div>
+              )}
             </div>
             <button onClick={()=>setShowAddCust(true)} className="absolute bottom-20 right-4 w-12 h-12 rounded-full bg-[#0e8a5a] text-white flex items-center justify-center shadow-lg">
               <Plus size={22} />
@@ -746,7 +855,17 @@ export default function Page(){
                     </div>
                   )
                 })}
-                {txns.filter(t=>t.customerId===selected.id).length===0 && <p className="text-[11px] text-center text-[#6b7c77] py-6">No transactions yet. Tap Give or Receive to add.</p>}
+                {txns.filter(t=>t.customerId===selected.id).length===0 && (
+                  <div className="flex flex-col items-center py-6">
+                    <img src="/illustrations/09-no-transactions.png" alt="No Transactions" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                    <p className="text-[11px] font-bold mt-2">No Transactions Yet</p>
+                    <p className="text-[10px] text-[#6b7c77]">Tap Give or Receive to add</p>
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={()=>{setTxnType('give'); navigateTo('add-transaction')}} className="px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[10px] font-bold">Give</button>
+                      <button onClick={()=>{setTxnType('receive'); navigateTo('add-transaction')}} className="px-4 py-2 rounded-full bg-[#f97316] text-white text-[10px] font-bold">Receive</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {detailTab==='details' && (
@@ -802,6 +921,9 @@ export default function Page(){
                 <button onClick={()=>setTxnType('receive')} className={`py-2.5 rounded-full font-bold text-[12px] flex items-center justify-center gap-1.5 border ${txnType==='receive'?'bg-[#0e8a5a] text-white border-[#0e8a5a]':'bg-white text-[#6b7c77] border-[#e0ece6] dark:bg-white/10 dark:text-white/70 dark:border-white/10'}`}>
                   <ArrowDownLeft size={14}/> Receive
                 </button>
+              </div>
+              <div className="flex justify-center mt-2">
+                <img src={txnType==='give' ? "/illustrations/04-give.png" : "/illustrations/05-receive.png"} alt={txnType} className="w-28 h-28 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
               </div>
               <div className="px-4 mt-4 flex items-center justify-between">
                 <div className="flex items-baseline gap-1">
@@ -905,45 +1027,78 @@ export default function Page(){
         )}
 
         {/* ===== REPORTS ===== */}
-        {view==='reports' && (
+        {view==='reports' && (()=> {
+          const monthLabel = new Date(reportMonth+'-01').toLocaleDateString('en-IN',{month:'long', year:'numeric'})
+          const monthTxns = txns.filter(t=> t.dateISO.startsWith(reportMonth))
+          const monthGiven = monthTxns.filter(t=>t.type==='given').reduce((s,t)=>s+t.amount,0)
+          const monthReceived = monthTxns.filter(t=>t.type==='received').reduce((s,t)=>s+t.amount,0)
+          const buckets = Array.from({length:6},(_,bi)=>{
+            const start=bi*5+1, end=bi===5?31: (bi+1)*5
+            const inBucket=monthTxns.filter(t=>{
+              const d=new Date(t.dateISO).getDate()
+              return d>=start && d<=end
+            })
+            return {
+              label: bi===5? `${start}-31` : `${start}-${end}`,
+              given: inBucket.filter(t=>t.type==='given').reduce((s,t)=>s+t.amount,0),
+              received: inBucket.filter(t=>t.type==='received').reduce((s,t)=>s+t.amount,0),
+            }
+          })
+          const maxBucket = Math.max(1, ...buckets.map(b=> Math.max(b.given,b.received)))
+          return (
           <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-20">
             <div className={`sticky top-0 z-10 px-4 py-3 border-b flex items-center justify-between ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'}`}>
               <h2 className={`text-[14px] font-extrabold ${dark?'text-white':''}`}>Reports</h2>
               <div className="flex items-center gap-2">
                 <button onClick={shareReportViaWhatsApp} className="w-8 h-8 rounded-full bg-[#25D366] text-white flex items-center justify-center" title="Share Report on WhatsApp"><Share2 size={14}/></button>
-                <button onClick={()=>showToast('Month picker coming soon')} className={`px-2 py-1 rounded-full border text-[10px] font-bold flex items-center gap-1 ${dark?'bg-white/10 border-white/10 text-white':'bg-[#f2f7f4] border-[#e0ece6]'}`}>September 2026 <ChevronDown size={12}/></button>
+                <button onClick={()=>setShowMonthPicker(true)} className={`px-2 py-1 rounded-full border text-[10px] font-bold flex items-center gap-1 ${dark?'bg-white/10 border-white/10 text-white':'bg-[#f2f7f4] border-[#e0ece6]'}`}>{monthLabel} <ChevronDown size={12}/></button>
               </div>
             </div>
             <div className="px-4 pt-3">
               <div className="grid grid-cols-3 gap-2">
                 <div className={`${card} border rounded-[12px] p-2 text-center`}>
-                  <p className="text-[9px] font-semibold text-[#6b7c77]">Total Given</p>
-                  <p className="text-[13px] font-extrabold text-[#3b82f6]">{formatINR(totalGivenAll)}</p>
+                  <p className="text-[9px] font-semibold text-[#6b7c77]">Given ({monthLabel.split(' ')[0]})</p>
+                  <p className="text-[13px] font-extrabold text-[#3b82f6]">{formatINR(monthGiven)}</p>
+                  <p className="text-[8px] text-[#6b7c77]">{monthTxns.filter(t=>t.type==='given').length} txns</p>
                 </div>
                 <div className={`${card} border rounded-[12px] p-2 text-center`}>
-                  <p className="text-[9px] font-semibold text-[#6b7c77]">Total Received</p>
-                  <p className="text-[13px] font-extrabold text-emerald-600">{formatINR(totalReceivedAll)}</p>
+                  <p className="text-[9px] font-semibold text-[#6b7c77]">Received ({monthLabel.split(' ')[0]})</p>
+                  <p className="text-[13px] font-extrabold text-emerald-600">{formatINR(monthReceived)}</p>
+                  <p className="text-[8px] text-[#6b7c77]">{monthTxns.filter(t=>t.type==='received').length} txns</p>
                 </div>
                 <div className={`${card} border rounded-[12px] p-2 text-center`}>
                   <p className="text-[9px] font-semibold text-[#6b7c77]">Outstanding</p>
                   <p className="text-[13px] font-extrabold text-orange-600">{formatINR(outstandingAll)}</p>
+                  <p className="text-[8px] text-[#6b7c77]">All time</p>
                 </div>
               </div>
               <div className={`${card} border rounded-[14px] p-3 mt-3`}>
-                <div className="flex items-center gap-3 text-[9px] font-bold">
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"/> Given</span>
-                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400"/> Received</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 text-[9px] font-bold">
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"/> Given</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400"/> Received</span>
+                  </div>
+                  <span className="text-[9px] text-[#6b7c77]">{monthLabel} • {monthTxns.length} txns</span>
                 </div>
+                {monthTxns.length===0 ? (
+                  <div className="flex flex-col items-center py-6">
+                    <img src="/illustrations/11-reports.png" alt="No Reports" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                    <p className="text-[11px] font-bold mt-2">No data for {monthLabel}</p>
+                    <p className="text-[10px] text-[#6b7c77]">Add transactions in this month</p>
+                  </div>
+                ) : (
                 <div className="flex items-end gap-1 h-24 mt-3">
-                  {[60,80,45,70,55,90,65,75,50,85,60,70].map((h,i)=>(
-                    <div key={i} className="flex-1 flex flex-col gap-0.5 items-center">
-                      <div className="w-full flex gap-0.5 justify-center">
-                        <div className="flex-1 bg-emerald-500 rounded-t" style={{height:h*0.6}} />
-                        <div className="flex-1 bg-red-400 rounded-t" style={{height:h*0.4}} />
+                  {buckets.map((b,i)=>(
+                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="w-full flex gap-0.5 justify-center items-end h-20">
+                        <div className="flex-1 bg-emerald-500 rounded-t transition-all" style={{height: `${Math.max(4, (b.given/maxBucket)*72)}px`}} title={`Given ${formatINR(b.given)}`} />
+                        <div className="flex-1 bg-red-400 rounded-t transition-all" style={{height: `${Math.max(4, (b.received/maxBucket)*72)}px`}} title={`Received ${formatINR(b.received)}`} />
                       </div>
+                      <span className="text-[7px] text-[#6b7c77] font-medium">{b.label}</span>
                     </div>
                   ))}
                 </div>
+                )}
               </div>
               <div className="mt-3 space-y-2">
                 <button onClick={customerReportPdf} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
@@ -973,7 +1128,7 @@ export default function Page(){
               </div>
             </div>
           </div>
-        )}
+        ) })()}
 
         {/* ===== BACKUP ===== */}
         {view==='backup' && (
@@ -983,8 +1138,9 @@ export default function Page(){
               <h2 className={`text-[14px] font-bold ${dark?'text-white':''}`}>Backup & Restore</h2>
             </div>
             <div className="px-4 pt-6 flex flex-col items-center">
-              <div className="w-12 h-12 rounded-[14px] bg-emerald-100 flex items-center justify-center text-emerald-700"><Shield size={20}/></div>
-              <h3 className={`text-[13px] font-extrabold mt-3 ${dark?'text-white':''}`}>Keep your data safe</h3>
+              <img src="/illustrations/10-backup.png" alt="Backup" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <div className="w-12 h-12 rounded-[14px] bg-emerald-100 flex items-center justify-center text-emerald-700 mt-2"><Shield size={20}/></div>
+              <h3 className={`text-[13px] font-extrabold mt-2 ${dark?'text-white':''}`}>Keep your data safe</h3>
               <p className="text-[10px] text-[#6b7c77] text-center mt-1">All your data stays on your device.<br/>No cloud, no login, no server.</p>
             </div>
             <div className="px-4 mt-5 space-y-2">
@@ -1023,7 +1179,8 @@ export default function Page(){
               <h2 className={`text-[14px] font-bold ${dark?'text-white':''}`}>App Lock</h2>
             </div>
             <div className="flex-1 overflow-auto scrollbar-hide px-6 pt-6 flex flex-col items-center">
-              <div className="w-14 h-14 rounded-[16px] bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white shadow-lg"><Lock size={22}/></div>
+              <img src="/illustrations/12-secure-offline.png" alt="Secure Offline" className="w-28 h-28 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <div className="w-14 h-14 rounded-[16px] bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white shadow-lg mt-2"><Lock size={22}/></div>
               <h3 className={`text-[13px] font-extrabold mt-3 ${dark?'text-white':''}`}>Keep Your Data Private</h3>
               <p className="text-[10px] text-[#6b7c77]">Set a PIN or use biometric lock</p>
               <div className={`flex p-1 rounded-full border mt-4 ${dark?'bg-white/10 border-white/10':'bg-[#f2f7f4] border-[#e0ece6]'}`}>
@@ -1153,7 +1310,13 @@ export default function Page(){
                   )}
                 </div>
               ))}
-              {reminders.filter(r=>r.status===reminderTab).length===0 && <p className="text-center text-[11px] text-[#6b7c77] py-10">No {reminderTab.toLowerCase()} reminders</p>}
+              {reminders.filter(r=>r.status===reminderTab).length===0 && (
+                <div className="flex flex-col items-center py-8">
+                  <img src="/illustrations/06-reminders.png" alt="No Reminders" className="w-36 h-36 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <p className="text-[11px] font-bold mt-2">No {reminderTab} reminders</p>
+                  <p className="text-[10px] text-[#6b7c77]">You&apos;re all caught up!</p>
+                </div>
+              )}
             </div>
             <button onClick={()=>setShowAddReminder(true)} className="absolute bottom-20 right-4 w-11 h-11 rounded-full bg-[#0e8a5a] text-white flex items-center justify-center shadow-lg"><Plus size={18}/></button>
           </div>
