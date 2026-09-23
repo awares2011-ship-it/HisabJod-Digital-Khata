@@ -533,8 +533,8 @@ export default function Page(){
           <div className={`page-enter flex-1 flex flex-col px-6 pt-10 pb-6 ${dark?'bg-[#0f1e18]':'bg-gradient-to-b from-[#eaf5ee] via-[#f6fbf7] to-white'}`}>
             <div className="flex-1 flex flex-col items-center">
               <div className="w-full flex justify-between items-center text-[10px] font-medium opacity-60"><span>9:41</span><span className="flex gap-1"><span>●●●</span> <span>▮</span></span></div>
-              <div className="mt-6 w-[170px] h-[170px] bg-white rounded-[24px] border border-[#cfe3d9] flex items-center justify-center shadow-[0_8px_24px_rgba(14,138,90,.12)] overflow-hidden p-3">
-                <img src="/hisabjod-logo-original.png" alt="HisabJod Logo" className="w-full h-full object-contain" />
+              <div className="mt-6 w-[200px] h-[200px] bg-white rounded-[24px] border border-[#cfe3d9] flex items-center justify-center shadow-[0_8px_24px_rgba(14,138,90,.12)] overflow-hidden p-2">
+                <img src="/illustrations/01-hisabjod-hero.png" alt="HisabJod Apna Hisab" className="w-full h-full object-contain" onError={e=>{ (e.target as HTMLImageElement).src='/hisabjod-logo-original.png' }} />
               </div>
               <h1 className="mt-7 text-[30px] font-extrabold tracking-tight text-[#0a3d2b] dark:text-white">HisabJod</h1>
               <p className="text-[13px] font-semibold text-[#0e8a5a] -mt-1">Your Digital Khata</p>
@@ -600,12 +600,12 @@ export default function Page(){
                   <p className={`text-[9px] flex items-center gap-1 ${dark?'text-orange-200':'text-orange-600'} relative`}><ArrowUpRight size={10}/> 2% this month</p>
                 </div>
                 <div className={`${card} rounded-[14px] p-3 flex items-center gap-2 relative overflow-hidden`}>
-                  <img src="/illustrations/06-reminders.png" alt="" className="absolute -bottom-1 -right-1 w-10 h-10 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <img src="/illustrations/08-never-miss-payment.png" alt="" className="absolute -bottom-1 -right-1 w-10 h-10 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
                   <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 relative"><Clock size={14}/></div>
                   <div className="relative"><p className={`text-[11px] font-extrabold ${dark?'text-white':''}`}>Overdue</p><p className={`text-[10px] font-bold ${dark?'text-white':'text-[#6b7c77]'}`}>{overdueCount} Customers</p></div>
                 </div>
                 <div className={`${card} rounded-[14px] p-3 flex items-center gap-2 relative overflow-hidden`}>
-                  <img src="/illustrations/02-analytics.png" alt="" className="absolute -bottom-1 -right-1 w-10 h-10 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <img src="/illustrations/14-track-today.png" alt="" className="absolute -bottom-1 -right-1 w-10 h-10 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
                   <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 relative"><BarChart3 size={14}/></div>
                   <div className="relative"><p className="text-[10px] font-semibold text-[#6b7c77]">Today&apos;s Activity</p><p className={`text-[13px] font-extrabold ${dark?'text-white':'text-[#14201c]'}`}>{formatINR(todaySum)}</p><p className="text-[9px] text-[#6b7c77]">{todayTxns.length} transactions</p></div>
                 </div>
@@ -690,9 +690,10 @@ export default function Page(){
                 ))}
                 {txns.length===0 && (
                   <div className="flex flex-col items-center py-6">
-                    <img src="/illustrations/09-no-transactions.png" alt="No Transactions" className="w-36 h-36 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                    <img src="/illustrations/03-no-transactions.png" alt="No Transactions" className="w-36 h-36 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
                     <p className="text-[13px] font-bold mt-2">No Transactions Yet</p>
-                    <p className="text-[11px] text-[#6b7c77] text-center">Your transactions will<br/>appear here</p>
+                    <p className="text-[11px] text-[#6b7c77] text-center">Start adding transactions<br/>and keep your hisab organized</p>
+                    <button onClick={()=>navigateTo('add-transaction')} className="mt-3 px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[11px] font-bold">Add Transaction</button>
                   </div>
                 )}
               </div>
@@ -753,11 +754,10 @@ export default function Page(){
               ))}
               {filtered.length===0 && (
                 <div className="flex flex-col items-center py-8">
-                  <img src="/illustrations/08-no-customers.png" alt="No Customers" className="w-40 h-40 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                  <p className="text-[13px] font-bold mt-3">No Customers Yet</p>
-                  <p className="text-[11px] text-[#6b7c77] text-center">Add your first customer<br/>to start your khata</p>
-                  <button onClick={()=>setShowAddCust(true)} className="mt-3 px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[11px] font-bold">Add Customer</button>
-                  <p className="text-[9px] text-[#6b7c77] mt-2">Illustration 08 • Save as 08-no-customers.png</p>
+                  <img src={customers.length===0 ? "/illustrations/02-no-customers.png" : "/illustrations/05-no-results.png"} alt={customers.length===0 ? "No Customers" : "No Results"} className="w-40 h-40 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <p className="text-[13px] font-bold mt-3">{customers.length===0 ? "No Customers Yet" : "No Results Found"}</p>
+                  <p className="text-[11px] text-[#6b7c77] text-center">{customers.length===0 ? <>Add your first customer<br/>to start your digital khata</> : <>Try a different name<br/>or check the spelling</>}</p>
+                  <button onClick={()=>setShowAddCust(true)} className="mt-3 px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[11px] font-bold">{customers.length===0 ? "Add Customer" : "Clear Search"}</button>
                 </div>
               )}
             </div>
@@ -849,13 +849,10 @@ export default function Page(){
                 })}
                 {txns.filter(t=>t.customerId===selected.id).length===0 && (
                   <div className="flex flex-col items-center py-6">
-                    <img src="/illustrations/09-no-transactions.png" alt="No Transactions" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                    <img src="/illustrations/03-no-transactions.png" alt="No Transactions" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
                     <p className="text-[11px] font-bold mt-2">No Transactions Yet</p>
-                    <p className="text-[10px] text-[#6b7c77]">Tap Give or Receive to add</p>
-                    <div className="flex gap-2 mt-3">
-                      <button onClick={()=>{setTxnType('give'); navigateTo('add-transaction')}} className="px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[10px] font-bold">Give</button>
-                      <button onClick={()=>{setTxnType('receive'); navigateTo('add-transaction')}} className="px-4 py-2 rounded-full bg-[#f97316] text-white text-[10px] font-bold">Receive</button>
-                    </div>
+                    <p className="text-[10px] text-[#6b7c77] text-center">Start adding transactions<br/>and keep your hisab organized</p>
+                    <button onClick={()=>navigateTo('add-transaction')} className="mt-3 px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[10px] font-bold">Add Transaction</button>
                   </div>
                 )}
               </div>
@@ -1075,9 +1072,9 @@ export default function Page(){
                 </div>
                 {monthTxns.length===0 ? (
                   <div className="flex flex-col items-center py-6">
-                    <img src="/illustrations/11-reports.png" alt="No Reports" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                    <img src="/illustrations/07-grow-business.png" alt="Grow Business" className="w-40 h-40 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
                     <p className="text-[11px] font-bold mt-2">No data for {monthLabel}</p>
-                    <p className="text-[10px] text-[#6b7c77]">Add transactions in this month</p>
+                    <p className="text-[10px] text-[#6b7c77]">View detailed reports and grow your business</p>
                   </div>
                 ) : (
                 <div className="flex items-end gap-1 h-24 mt-3">
@@ -1127,12 +1124,12 @@ export default function Page(){
         {view==='backup' && (
           <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-6">
             <div className={`flex items-center gap-3 px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
-              <img src="/illustrations/10-backup.png" alt="" className="absolute -top-1 -right-2 w-14 h-14 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <img src="/illustrations/06-keep-data-safe.png" alt="" className="absolute -top-1 -right-2 w-14 h-14 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
               <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'} relative`}><ArrowLeft size={16}/></button>
               <h2 className={`text-[14px] font-bold ${dark?'text-white':''} relative`}>Backup & Restore</h2>
             </div>
             <div className="px-4 pt-6 flex flex-col items-center">
-              <img src="/illustrations/10-backup.png" alt="Backup" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <img src="/illustrations/06-keep-data-safe.png" alt="Backup" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
               <div className="w-12 h-12 rounded-[14px] bg-emerald-100 flex items-center justify-center text-emerald-700 mt-2"><Shield size={20}/></div>
               <h3 className={`text-[13px] font-extrabold mt-2 ${dark?'text-white':''}`}>Keep your data safe</h3>
               <p className="text-[10px] text-[#6b7c77] text-center mt-1">All your data stays on your device.<br/>No cloud, no login, no server.</p>
@@ -1174,7 +1171,7 @@ export default function Page(){
               <h2 className={`text-[14px] font-bold ${dark?'text-white':''} relative`}>App Lock</h2>
             </div>
             <div className="flex-1 overflow-auto scrollbar-hide px-6 pt-6 flex flex-col items-center">
-              <img src="/illustrations/12-secure-offline.png" alt="Secure Offline" className="w-28 h-28 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <img src="/illustrations/15-100-private.png" alt="Secure Offline" className="w-28 h-28 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
               <div className="w-14 h-14 rounded-[16px] bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white shadow-lg mt-2"><Lock size={22}/></div>
               <h3 className={`text-[13px] font-extrabold mt-3 ${dark?'text-white':''}`}>Keep Your Data Private</h3>
               <p className="text-[10px] text-[#6b7c77]">Set a PIN or use biometric lock</p>
@@ -1274,7 +1271,7 @@ export default function Page(){
         {view==='reminders' && (
           <div className="page-enter flex-1 flex flex-col overflow-hidden">
             <div className={`flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
-              <img src="/illustrations/06-reminders.png" alt="" className="absolute -top-1 -right-10 w-16 h-16 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <img src="/illustrations/08-never-miss-payment.png" alt="" className="absolute -top-1 -right-10 w-16 h-16 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
               <div className="flex items-center gap-2 relative">
                 <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><ArrowLeft size={16}/></button>
                 <h2 className={`text-[14px] font-bold ${dark?'text-white':''}`}>Reminders</h2>
@@ -1309,7 +1306,7 @@ export default function Page(){
               ))}
               {reminders.filter(r=>r.status===reminderTab).length===0 && (
                 <div className="flex flex-col items-center py-8">
-                  <img src="/illustrations/06-reminders.png" alt="No Reminders" className="w-36 h-36 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <img src="/illustrations/12-no-reminders.png" alt="No Reminders" className="w-36 h-36 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
                   <p className="text-[11px] font-bold mt-2">No {reminderTab} reminders</p>
                   <p className="text-[10px] text-[#6b7c77]">You&apos;re all caught up!</p>
                 </div>
