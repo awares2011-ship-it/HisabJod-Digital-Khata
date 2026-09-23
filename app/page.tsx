@@ -532,7 +532,7 @@ export default function Page(){
         {view==='splash' && (
           <div className={`page-enter flex-1 flex flex-col px-6 pt-10 pb-6 ${dark?'bg-[#0f1e18]':'bg-gradient-to-b from-[#eaf5ee] via-[#f6fbf7] to-white'}`}>
             <div className="flex-1 flex flex-col items-center">
-              <div className="w-full flex justify-between items-center text-[10px] font-medium opacity-60"><span>9:41</span><span className="flex gap-1"><span>●●●</span> <span>▮</span></span></div>
+
               <div className="mt-6 w-[200px] h-[200px] bg-white rounded-[24px] border border-[#cfe3d9] flex items-center justify-center shadow-[0_8px_24px_rgba(14,138,90,.12)] overflow-hidden p-2">
                 <img src="/illustrations/01-hisabjod-hero.png" alt="HisabJod Apna Hisab" className="w-full h-full object-contain" onError={e=>{ (e.target as HTMLImageElement).src='/hisabjod-logo-original.png' }} />
               </div>
@@ -672,6 +672,15 @@ export default function Page(){
                 }} className="px-3 py-1.5 rounded-full bg-[#0e8a5a] text-white text-[10px] font-bold">Invite</button>
               </div>
             </div>
+            {/* Banner - in-content middle, scrolls with Home */}
+            <div className="mx-3 mt-2 p-2 rounded-[12px] border bg-white shadow-sm">
+              <p className="text-[8px] font-bold tracking-widest text-[#6b7c77] text-center">ADVERTISEMENT</p>
+              <div className="mt-1 h-[60px] bg-[#f8faf9] border border-[#e0ece6] rounded-[8px] flex items-center justify-center gap-2">
+                <span className="text-[10px] font-bold text-[#0e8a5a]">banner_hisab</span>
+                <span className="text-[8px] bg-black text-white px-1.5 py-0.5 rounded">Test Ad</span>
+                <span className="text-[9px] text-[#6b7c77]">3656322283 • 320×50</span>
+              </div>
+            </div>
             <div className="page-enter flex-1 px-4 pt-3 pb-20 overflow-auto scrollbar-hide">
               <div className="flex justify-between items-center mb-2">
                 <h3 className={`text-[13px] font-bold ${dark?'text-white':''}`}>Recent Transactions</h3>
@@ -697,12 +706,7 @@ export default function Page(){
                   </div>
                 )}
               </div>
-              <div className="mt-4 p-3 rounded-[12px] border border-dashed border-[#cfe3d9] bg-[#f2f7f4] text-center">
-                <p className="text-[8px] font-bold tracking-widest text-[#6b7c77]">ADVERTISEMENT</p>
-                <p className="text-[9px] text-[#0e8a5a] font-mono">banner_hisab • ca-app-pub-1607968585289432/3656322283</p>
-                <p className="text-[8px] text-[#6b7c77]">Adaptive Banner • Scrolls with content</p>
-                <div className="mt-2 h-[50px] bg-white border border-[#e0ece6] rounded-[8px] flex items-center justify-center text-[10px] text-[#6b7c77]">Test Ad • Banner • 320×50 — moves when you scroll</div>
-              </div>
+
             </div>
           </>
         )}
