@@ -1,0 +1,28 @@
+{
+  "name": "HisabJod - Digital Khata | Udhar Hisab",
+  "short_name": "HisabJod",
+  "description": "Simple. Secure. Offline. Khata for Kirana, dukaan. Marathi, Hindi, English. Track udhar, manage payments, never miss due.",
+  "start_url": "/?ref=pwa",
+  "display": "standalone",
+  "background_color": "#0e8a5a",
+  "theme_color": "#0e8a5a",
+  "orientation": "portrait",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["finance", "business", "productivity"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-light-32x32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/apple-icon.png", "sizes": "180x180", "type": "image/png" }
+  ],
+  "shortcuts": [
+    { "name": "Add Transaction", "url": "/?action=add", "description": "Give or Receive money", "icons": [{ "src": "/icon.svg", "sizes": "96x96" }] },
+    { "name": "Customers", "url": "/?view=customers", "description": "View khata", "icons": [{ "src": "/icon.svg", "sizes": "96x96" }] },
+    { "name": "Reminders", "url": "/?view=reminders", "description": "Overdue reminders", "icons": [{ "src": "/icon.svg", "sizes": "96x96" }] }
+  ],
+  "screenshots": [
+    { "src": "/placeholder.jpg", "sizes": "540x960", "type": "image/jpeg", "form_factor": "narrow" }
+  ]
+}

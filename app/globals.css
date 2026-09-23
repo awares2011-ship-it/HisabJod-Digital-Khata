@@ -1,0 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@custom-variant dark (&:is(.dark *));
+:root { --background:#eef5f0; --foreground:#14201c; --panel:#ffffff; --line:#e5ede9; --green:#0e8a5a; --green-dark:#0a6b44; --green-soft:#e6f3ec; --orange:#f59e0b; --muted:#6b7c77; }
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--background);color:var(--foreground);font-family:Inter,'Noto Sans Devanagari',system-ui,sans-serif;-webkit-font-smoothing:antialiased; overscroll-behavior-y:none; -webkit-overflow-scrolling:touch}
+button{cursor:pointer; -webkit-tap-highlight-color:transparent}
+button:active{transform:scale(.98)}
+.scrollbar-hide::-webkit-scrollbar{display:none}
+.scrollbar-hide{-ms-overflow-style:none;scrollbar-width:none}
+.page-enter{animation:pageIn .24s cubic-bezier(.22,1,.36,1)}
+@keyframes pageIn{from{opacity:0; transform:translateY(8px) scale(.98)} to{opacity:1; transform:translateY(0) scale(1)}}
+.nav-active{transition:transform .2s cubic-bezier(.22,1,.36,1), color .15s}
+.btn-press:active{transform:scale(.96)}
+.card-press{transition:transform .14s, box-shadow .14s}
+.card-press:active{transform:scale(.985)}
+.smooth-scroll{scroll-behavior:smooth; -webkit-overflow-scrolling:touch}
+@media (prefers-reduced-motion:reduce){ .page-enter{animation:none} html{scroll-behavior:auto} }
