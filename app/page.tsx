@@ -591,8 +591,9 @@ export default function Page(){
         {/* ===== HOME ===== */}
         {view==='home' && (
           <>
-            <div className={`${dark?'bg-gradient-to-br from-[#0e8a5a] to-[#083d2b] text-white':'bg-gradient-to-br from-[#dcf0e3] via-[#eef7f2] to-[#f8faf9]'} px-4 pt-3 pb-3`}>
-              <div className="flex justify-between items-start">
+            <div className={`${dark?'bg-gradient-to-br from-[#0e8a5a] to-[#083d2b] text-white':'bg-gradient-to-br from-[#dcf0e3] via-[#eef7f2] to-[#f8faf9]'} px-4 pt-3 pb-3 relative overflow-hidden`}>
+              <img src="/illustrations/01-khata.png" alt="" className="absolute -top-2 -right-2 w-20 h-20 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <div className="flex justify-between items-start relative">
                 <div>
                   <p className={`text-[11px] font-semibold ${dark?'text-white/80':'text-[#6b7c77]'}`}>Good {new Date().getHours()<12?'Morning':new Date().getHours()<18?'Afternoon':'Evening'}</p>
                   <h2 className="text-[18px] font-extrabold leading-none flex items-center gap-1">{bizName.split(' ')[0]||'Nivrutti'} <span className="text-[14px]">👋</span></h2>
@@ -604,23 +605,27 @@ export default function Page(){
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
-                <div className={`${dark?'bg-white/10 backdrop-blur border-white/15 text-white':'bg-white border-[#e0ece6]'} border rounded-[14px] p-3`}>
-                  <p className={`text-[10px] font-semibold ${dark?'text-white/70':'text-[#6b7c77]'}`}>To Receive</p>
-                  <p className="text-[16px] font-extrabold">{formatINR(totalReceive)}</p>
-                  <p className={`text-[9px] flex items-center gap-1 ${dark?'text-emerald-200':'text-emerald-600'}`}><ArrowUpRight size={10}/> 8% this month</p>
+                <div className={`${dark?'bg-white/10 backdrop-blur border-white/15 text-white':'bg-white border-[#e0ece6]'} border rounded-[14px] p-3 relative overflow-hidden`}>
+                  <img src="/illustrations/01-khata.png" alt="" className="absolute -bottom-1 -right-1 w-12 h-12 opacity-[0.08] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <p className={`text-[10px] font-semibold ${dark?'text-white/70':'text-[#6b7c77]'} relative`}>To Receive</p>
+                  <p className="text-[16px] font-extrabold relative">{formatINR(totalReceive)}</p>
+                  <p className={`text-[9px] flex items-center gap-1 ${dark?'text-emerald-200':'text-emerald-600'} relative`}><ArrowUpRight size={10}/> 8% this month</p>
                 </div>
-                <div className={`${dark?'bg-[#ffefe5]/10 border-white/15 text-white':'bg-[#fff1e8] border-[#f5d9c0]'} border rounded-[14px] p-3`}>
-                  <p className={`text-[10px] font-semibold ${dark?'text-white/70':'text-[#8a5a2b]'}`}>To Pay</p>
-                  <p className="text-[16px] font-extrabold">{formatINR(totalPay)}</p>
-                  <p className={`text-[9px] flex items-center gap-1 ${dark?'text-orange-200':'text-orange-600'}`}><ArrowUpRight size={10}/> 2% this month</p>
+                <div className={`${dark?'bg-[#ffefe5]/10 border-white/15 text-white':'bg-[#fff1e8] border-[#f5d9c0]'} border rounded-[14px] p-3 relative overflow-hidden`}>
+                  <img src="/illustrations/04-give.png" alt="" className="absolute -bottom-1 -right-1 w-12 h-12 opacity-[0.08] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <p className={`text-[10px] font-semibold ${dark?'text-white/70':'text-[#8a5a2b]'} relative`}>To Pay</p>
+                  <p className="text-[16px] font-extrabold relative">{formatINR(totalPay)}</p>
+                  <p className={`text-[9px] flex items-center gap-1 ${dark?'text-orange-200':'text-orange-600'} relative`}><ArrowUpRight size={10}/> 2% this month</p>
                 </div>
-                <div className={`${card} rounded-[14px] p-3 flex items-center gap-2`}>
-                  <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-orange-600"><Clock size={14}/></div>
-                  <div><p className={`text-[11px] font-extrabold ${dark?'text-white':''}`}>Overdue</p><p className={`text-[10px] font-bold ${dark?'text-white':'text-[#6b7c77]'}`}>{overdueCount} Customers</p></div>
+                <div className={`${card} rounded-[14px] p-3 flex items-center gap-2 relative overflow-hidden`}>
+                  <img src="/illustrations/06-reminders.png" alt="" className="absolute -bottom-1 -right-1 w-10 h-10 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 relative"><Clock size={14}/></div>
+                  <div className="relative"><p className={`text-[11px] font-extrabold ${dark?'text-white':''}`}>Overdue</p><p className={`text-[10px] font-bold ${dark?'text-white':'text-[#6b7c77]'}`}>{overdueCount} Customers</p></div>
                 </div>
-                <div className={`${card} rounded-[14px] p-3 flex items-center gap-2`}>
-                  <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><BarChart3 size={14}/></div>
-                  <div><p className="text-[10px] font-semibold text-[#6b7c77]">Today&apos;s Activity</p><p className={`text-[13px] font-extrabold ${dark?'text-white':'text-[#14201c]'}`}>{formatINR(todaySum)}</p><p className="text-[9px] text-[#6b7c77]">{todayTxns.length} transactions</p></div>
+                <div className={`${card} rounded-[14px] p-3 flex items-center gap-2 relative overflow-hidden`}>
+                  <img src="/illustrations/02-analytics.png" alt="" className="absolute -bottom-1 -right-1 w-10 h-10 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                  <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 relative"><BarChart3 size={14}/></div>
+                  <div className="relative"><p className="text-[10px] font-semibold text-[#6b7c77]">Today&apos;s Activity</p><p className={`text-[13px] font-extrabold ${dark?'text-white':'text-[#14201c]'}`}>{formatINR(todaySum)}</p><p className="text-[9px] text-[#6b7c77]">{todayTxns.length} transactions</p></div>
                 </div>
               </div>
               <div className="grid grid-cols-4 gap-2 mt-3">
@@ -743,8 +748,9 @@ export default function Page(){
         {/* ===== CUSTOMERS ===== */}
         {view==='customers' && (
           <div className="page-enter flex-1 flex flex-col overflow-hidden">
-            <div className={`px-4 pt-3 pb-2 border-b ${dark?'border-white/10 bg-[#111d18]':'bg-white border-[#e0ece6]'} sticky top-0 z-10`}>
-              <div className="flex items-center justify-between">
+            <div className={`px-4 pt-3 pb-2 border-b ${dark?'border-white/10 bg-[#111d18]':'bg-white border-[#e0ece6]'} sticky top-0 z-10 relative overflow-hidden`}>
+              <img src="/illustrations/03-customers.png" alt="" className="absolute -top-1 -right-2 w-16 h-16 opacity-[0.06] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <div className="flex items-center justify-between relative">
                 <h2 className={`text-[16px] font-extrabold ${dark?'text-white':''}`}>Customers</h2>
                 <button onClick={()=>showToast(`${customers.length} customers`)} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><Search size={16} className={muted}/></button>
               </div>
@@ -1072,9 +1078,10 @@ export default function Page(){
           const maxBucket = Math.max(1, ...buckets.map(b=> Math.max(b.given,b.received)))
           return (
           <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-20">
-            <div className={`sticky top-0 z-10 px-4 py-3 border-b flex items-center justify-between ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'}`}>
-              <h2 className={`text-[14px] font-extrabold ${dark?'text-white':''}`}>Reports</h2>
-              <div className="flex items-center gap-2">
+            <div className={`sticky top-0 z-10 px-4 py-3 border-b flex items-center justify-between ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
+              <img src="/illustrations/02-analytics.png" alt="" className="absolute -top-1 -right-2 w-16 h-16 opacity-[0.06] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <h2 className={`text-[14px] font-extrabold ${dark?'text-white':''} relative`}>Reports</h2>
+              <div className="flex items-center gap-2 relative">
                 <button onClick={shareReportViaWhatsApp} className="w-8 h-8 rounded-full bg-[#25D366] text-white flex items-center justify-center" title="Share Report on WhatsApp"><Share2 size={14}/></button>
                 <button onClick={()=>setShowMonthPicker(true)} className={`px-2 py-1 rounded-full border text-[10px] font-bold flex items-center gap-1 ${dark?'bg-white/10 border-white/10 text-white':'bg-[#f2f7f4] border-[#e0ece6]'}`}>{monthLabel} <ChevronDown size={12}/></button>
               </div>
@@ -1158,9 +1165,10 @@ export default function Page(){
         {/* ===== BACKUP ===== */}
         {view==='backup' && (
           <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-6">
-            <div className={`flex items-center gap-3 px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'}`}>
-              <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><ArrowLeft size={16}/></button>
-              <h2 className={`text-[14px] font-bold ${dark?'text-white':''}`}>Backup & Restore</h2>
+            <div className={`flex items-center gap-3 px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
+              <img src="/illustrations/10-backup.png" alt="" className="absolute -top-1 -right-2 w-14 h-14 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'} relative`}><ArrowLeft size={16}/></button>
+              <h2 className={`text-[14px] font-bold ${dark?'text-white':''} relative`}>Backup & Restore</h2>
             </div>
             <div className="px-4 pt-6 flex flex-col items-center">
               <img src="/illustrations/10-backup.png" alt="Backup" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
@@ -1199,9 +1207,10 @@ export default function Page(){
         {/* ===== APP LOCK ===== */}
         {view==='applock' && (
           <div className="page-enter flex-1 flex flex-col overflow-hidden">
-            <div className={`flex items-center gap-3 px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'}`}>
-              <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><ArrowLeft size={16}/></button>
-              <h2 className={`text-[14px] font-bold ${dark?'text-white':''}`}>App Lock</h2>
+            <div className={`flex items-center gap-3 px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
+              <img src="/illustrations/12-secure-offline.png" alt="" className="absolute -top-1 -right-2 w-14 h-14 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'} relative`}><ArrowLeft size={16}/></button>
+              <h2 className={`text-[14px] font-bold ${dark?'text-white':''} relative`}>App Lock</h2>
             </div>
             <div className="flex-1 overflow-auto scrollbar-hide px-6 pt-6 flex flex-col items-center">
               <img src="/illustrations/12-secure-offline.png" alt="Secure Offline" className="w-28 h-28 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
@@ -1251,8 +1260,9 @@ export default function Page(){
         {/* ===== SETTINGS ===== */}
         {view==='settings' && (
           <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-20">
-            <div className={`sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'}`}>
-              <h2 className={`text-[14px] font-extrabold ${dark?'text-white':''}`}>Settings</h2>
+            <div className={`sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
+              <img src="/illustrations/12-secure-offline.png" alt="" className="absolute -top-1 -right-2 w-14 h-14 opacity-[0.06] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <h2 className={`text-[14px] font-extrabold ${dark?'text-white':''} relative`}>Settings</h2>
             </div>
             <div className="px-3 pt-3 space-y-1.5">
               <button onClick={()=>setShowBiz(true)} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
@@ -1302,12 +1312,13 @@ export default function Page(){
         {/* ===== REMINDERS ===== */}
         {view==='reminders' && (
           <div className="page-enter flex-1 flex flex-col overflow-hidden">
-            <div className={`flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'}`}>
-              <div className="flex items-center gap-2">
+            <div className={`flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
+              <img src="/illustrations/06-reminders.png" alt="" className="absolute -top-1 -right-10 w-16 h-16 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+              <div className="flex items-center gap-2 relative">
                 <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><ArrowLeft size={16}/></button>
                 <h2 className={`text-[14px] font-bold ${dark?'text-white':''}`}>Reminders</h2>
               </div>
-              <button onClick={()=>showToast('Reminders: tap Remind to send WhatsApp')}><Bell size={16} className={muted} /></button>
+              <button onClick={()=>showToast('Reminders: tap Remind to send WhatsApp')} className="relative"><Bell size={16} className={muted} /></button>
             </div>
             <div className="flex gap-2 px-4 py-2">
               {(['Upcoming','Overdue','Completed'] as ReminderTab[]).map(t=>(
