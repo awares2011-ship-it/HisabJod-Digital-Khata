@@ -247,16 +247,20 @@ export default function Page(){
       }catch(e){ console.log('AdMob init',e) }
     })()
   },[])
-  // Banner adaptive bottom - show on Home/Customers/Reports (high viewability)
+  // Banner - ONE proper place at bottom above nav (high viewability, no overlap)
   useEffect(()=>{
     const isNative=(window as any).Capacitor?.isNativePlatform?.()
     if(!isNative) return
-    if(!['home','customers','reports'].includes(view)) return
+    if(view!=='home') {
+      ;(async()=>{ try{ const {AdMob}=await import('@capacitor-community/admob'); await AdMob.removeBanner().catch(()=>{}) }catch{} })()
+      return
+    }
     ;(async()=>{
       try{
         const { AdMob, BannerAdSize, BannerAdPosition } = await import('@capacitor-community/admob')
         await AdMob.removeBanner().catch(()=>{})
-        const opts:any={ adId:'ca-app-pub-1607968585289432/3656322283', adSize: BannerAdSize.ADAPTIVE_BANNER, position: BannerAdPosition.BOTTOM_CENTER, margin:64, isTesting:false }
+        // margin 90 = 64 nav + 26 safe area, ensures banner sits ABOVE bottom nav, not overlapping
+        const opts:any={ adId:'ca-app-pub-1607968585289432/3656322283', adSize: BannerAdSize.ADAPTIVE_BANNER, position: BannerAdPosition.BOTTOM_CENTER, margin:90, isTesting:false }
         await AdMob.showBanner(opts)
       }catch{}
     })()
@@ -681,13 +685,34 @@ export default function Page(){
                 }} className="px-3 py-1.5 rounded-full bg-[#0e8a5a] text-white text-[10px] font-bold">Invite</button>
               </div>
             </div>
-            {/* Banner Ad - Adaptive (high revenue, 30s refresh) */}
-            <div className="mx-3 mt-1 p-2 rounded-[8px] border border-dashed border-[#cfe3d9] bg-[#f2f7f4] text-center">
-              <p className="text-[8px] font-bold tracking-widest text-[#6b7c77]">ADVERTISEMENT</p>
-              <p className="text-[9px] text-[#0e8a5a] font-mono">banner_hisab • ca-app-pub-1607968585289432/3656322283</p>
-              <p className="text-[8px] text-[#6b7c77]">Adaptive Banner • Native shows on device via AdMob</p>
+            {/* 12 Split Illustrations - Gallery (where they are used) */}
+            <div className="mx-3 mt-2 p-3 rounded-[12px] border bg-white">
+              <p className="text-[11px] font-bold">HisabJod Illustrations</p>
+              <p className="text-[9px] text-[#6b7c77]">12 split images — smartly used in empty states</p>
+              <div className="grid grid-cols-4 gap-2 mt-2">
+                {[
+                  {s:'/illustrations/01-khata.png', l:'Khata'},
+                  {s:'/illustrations/02-analytics.png', l:'Analytics'},
+                  {s:'/illustrations/03-customers.png', l:'Customers'},
+                  {s:'/illustrations/04-give.png', l:'Give'},
+                  {s:'/illustrations/05-receive.png', l:'Receive'},
+                  {s:'/illustrations/06-reminders.png', l:'Reminders'},
+                  {s:'/illustrations/07-receipt.png', l:'Receipt'},
+                  {s:'/illustrations/08-no-customers.png', l:'No Cust'},
+                  {s:'/illustrations/09-no-transactions.png', l:'No Txn'},
+                  {s:'/illustrations/10-backup.png', l:'Backup'},
+                  {s:'/illustrations/11-reports.png', l:'Reports'},
+                  {s:'/illustrations/12-secure-offline.png', l:'Secure'},
+                ].map(it=>(
+                  <div key={it.l} className="flex flex-col items-center gap-1">
+                    <img src={it.s} alt={it.l} className="w-14 h-14 object-contain rounded-[8px] bg-[#f8faf9] border border-[#e0ece6] p-1" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
+                    <span className="text-[7px] font-bold text-[#6b7c77] text-center leading-tight">{it.l}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[8px] text-[#6b7c77] mt-2 text-center">Tap any empty state to see — Customers empty → 08, Transactions → 09, Backup → 10, Reports empty → 11, App Lock → 12, Give/Receive → 04/05</p>
             </div>
-            <div className="page-enter flex-1 px-4 pt-3 pb-20 overflow-auto scrollbar-hide">
+            <div className="page-enter flex-1 px-4 pt-3 pb-32 overflow-auto scrollbar-hide">
               <div className="flex justify-between items-center mb-2">
                 <h3 className={`text-[13px] font-bold ${dark?'text-white':''}`}>Recent Transactions</h3>
                 <button onClick={()=>navigateTo('reports')} className="text-[11px] font-bold text-[#0e8a5a]">See All</button>
