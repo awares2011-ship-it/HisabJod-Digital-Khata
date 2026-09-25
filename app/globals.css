@@ -1,21 +1,119 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
+/* Fonts are self-hosted via @fontsource (imported in layout.tsx) so they work offline */
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @custom-variant dark (&:is(.dark *));
-:root { --background:#eef5f0; --foreground:#14201c; --panel:#ffffff; --line:#e5ede9; --green:#0e8a5a; --green-dark:#0a6b44; --green-soft:#e6f3ec; --orange:#f59e0b; --muted:#6b7c77; }
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--background);color:var(--foreground);font-family:Inter,'Noto Sans Devanagari',system-ui,sans-serif;-webkit-font-smoothing:antialiased; overscroll-behavior-y:none; -webkit-overflow-scrolling:touch}
-button{cursor:pointer; -webkit-tap-highlight-color:transparent}
-button:active{transform:scale(.98)}
-.scrollbar-hide::-webkit-scrollbar{display:none}
-.scrollbar-hide{-ms-overflow-style:none;scrollbar-width:none}
-.page-enter{animation:pageIn .24s cubic-bezier(.22,1,.36,1)}
-@keyframes pageIn{from{opacity:0; transform:translateY(8px) scale(.98)} to{opacity:1; transform:translateY(0) scale(1)}}
-.nav-active{transition:transform .2s cubic-bezier(.22,1,.36,1), color .15s}
-.btn-press:active{transform:scale(.96)}
-.card-press{transition:transform .14s, box-shadow .14s}
-.card-press:active{transform:scale(.985)}
-.smooth-scroll{scroll-behavior:smooth; -webkit-overflow-scrolling:touch}
-@media (prefers-reduced-motion:reduce){ .page-enter{animation:none} html{scroll-behavior:auto} }
+
+/* ---------- HisabJod design tokens ---------- */
+:root {
+  --hj-bg: #f3f7f4;
+  --hj-card: #ffffff;
+  --hj-card-2: #f7faf8;
+  --hj-ink: #10231a;
+  --hj-ink-2: #34463d;
+  --hj-muted: #6a7c73;
+  --hj-line: #e3ece6;
+  --hj-brand: #0b7a43;
+  --hj-brand-2: #075a31;
+  --hj-brand-soft: #e7f5ec;
+  --hj-give: #e5484d;
+  --hj-give-soft: #fdecec;
+  --hj-get: #12a150;
+  --hj-get-soft: #e5f6eb;
+  --hj-gold: #f5a524;
+  --hj-gold-soft: #fff4dc;
+  --hj-blue-soft: #eaf2fd;
+  --hj-purple-soft: #f1eefc;
+  --hj-pink-soft: #fdeef0;
+  --hj-shadow: 0 1px 2px rgba(16, 35, 26, .04), 0 6px 20px rgba(16, 35, 26, .06);
+  --hj-shadow-lg: 0 10px 40px rgba(7, 90, 49, .18);
+}
+.dark {
+  --hj-bg: #0a1510;
+  --hj-card: #121f18;
+  --hj-card-2: #17281f;
+  --hj-ink: #eaf4ee;
+  --hj-ink-2: #c5d6cd;
+  --hj-muted: #8ea39a;
+  --hj-line: #213228;
+  --hj-brand: #1fa463;
+  --hj-brand-2: #0e7a45;
+  --hj-brand-soft: #143322;
+  --hj-give: #ff6b6f;
+  --hj-give-soft: #3a1c1e;
+  --hj-get: #2fcb71;
+  --hj-get-soft: #13321f;
+  --hj-gold: #f7b640;
+  --hj-gold-soft: #33280f;
+  --hj-blue-soft: #14243a;
+  --hj-purple-soft: #231d38;
+  --hj-pink-soft: #351b21;
+  --hj-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  --hj-shadow-lg: 0 10px 40px rgba(0, 0, 0, .45);
+}
+
+@theme inline {
+  --color-hj-bg: var(--hj-bg);
+  --color-hj-card: var(--hj-card);
+  --color-hj-card2: var(--hj-card-2);
+  --color-hj-ink: var(--hj-ink);
+  --color-hj-ink2: var(--hj-ink-2);
+  --color-hj-muted: var(--hj-muted);
+  --color-hj-line: var(--hj-line);
+  --color-hj-brand: var(--hj-brand);
+  --color-hj-brand2: var(--hj-brand-2);
+  --color-hj-brandsoft: var(--hj-brand-soft);
+  --color-hj-give: var(--hj-give);
+  --color-hj-givesoft: var(--hj-give-soft);
+  --color-hj-get: var(--hj-get);
+  --color-hj-getsoft: var(--hj-get-soft);
+  --color-hj-gold: var(--hj-gold);
+  --color-hj-goldsoft: var(--hj-gold-soft);
+  --color-hj-bluesoft: var(--hj-blue-soft);
+  --color-hj-purplesoft: var(--hj-purple-soft);
+  --color-hj-pinksoft: var(--hj-pink-soft);
+  --font-display: 'Plus Jakarta Sans', 'Noto Sans Devanagari', Inter, 'Noto Sans Devanagari', system-ui, sans-serif;
+  --shadow-hj: var(--hj-shadow);
+  --shadow-hjlg: var(--hj-shadow-lg);
+}
+
+* { box-sizing: border-box }
+html { scroll-behavior: smooth; padding-top: env(safe-area-inset-top); }
+body {
+  margin: 0; background: #e6efe9; color: var(--hj-ink);
+  font-family: Inter, 'Noto Sans Devanagari', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased; overscroll-behavior-y: none; -webkit-overflow-scrolling: touch;
+  padding-top: env(safe-area-inset-top);
+}
+.safe-top { padding-top: max(12px, env(safe-area-inset-top)); }
+.safe-top-legacy { padding-top: env(safe-area-inset-top); }
+@media (max-width: 640px) { body { background: var(--hj-bg) } }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent }
+button:disabled { cursor: not-allowed }
+input, textarea, select { font: inherit }
+.tnum { font-variant-numeric: tabular-nums }
+
+.scrollbar-hide::-webkit-scrollbar { display: none }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none }
+
+.page-enter { animation: pageIn .28s cubic-bezier(.22, 1, .36, 1) }
+@keyframes pageIn { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+.sheet-enter { animation: sheetIn .32s cubic-bezier(.22, 1, .36, 1) }
+@keyframes sheetIn { from { transform: translateY(100%) } to { transform: none } }
+.fade-enter { animation: fadeIn .2s ease-out }
+@keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+.pop-enter { animation: popIn .5s cubic-bezier(.34, 1.56, .64, 1) }
+@keyframes popIn { from { opacity: 0; transform: scale(.6) } to { opacity: 1; transform: none } }
+.float-y { animation: floatY 4s ease-in-out infinite }
+@keyframes floatY { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
+.shake { animation: shake .4s }
+@keyframes shake { 0%, 100% { transform: none } 20%, 60% { transform: translateX(-8px) } 40%, 80% { transform: translateX(8px) } }
+.press { transition: transform .12s ease, box-shadow .12s ease, background-color .15s }
+.press:active { transform: scale(.97) }
+.confetti i { position: absolute; width: 8px; height: 12px; border-radius: 2px; opacity: 0; animation: conf 1.4s ease-out forwards }
+@keyframes conf { 0% { opacity: 1; transform: translate(0, 0) rotate(0) } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(540deg) } }
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter, .sheet-enter, .pop-enter, .float-y, .fade-enter, .shake { animation: none }
+  html { scroll-behavior: auto }
+}

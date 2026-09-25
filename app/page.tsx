@@ -1,1447 +1,1659 @@
 'use client'
-import { useState, useMemo, useRef, useEffect } from 'react'
-import { jsPDF } from 'jspdf'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
-  ArrowDownLeft, ArrowUpRight, Bell, BookOpen, Search, Plus, ChevronRight, Home, Users, BarChart3, FileText, MoreHorizontal,
-  ArrowLeft, Phone, MapPin, HandCoins, Clock, Pencil, CreditCard, Wallet, StickyNote, Calendar, Share2,
-  Download, Shield, Fingerprint, Globe, Sun, Moon, Lock, CloudDownload, Upload, Briefcase, HelpCircle, Info,
-  Leaf, Store, ChevronDown, X, Check, Trash2, Landmark, Smartphone, Grid3X3, Repeat, Building2, Save
+  ArrowDownLeft, ArrowUpRight, Bell, Search, Plus, ChevronRight, Home, Users, BarChart3, MoreHorizontal,
+  Phone, MapPin, Pencil, CreditCard, Wallet, StickyNote, Calendar, Share2, Download, Globe, Moon, Lock,
+  CloudUpload, Upload, HelpCircle, Info, Check, Trash2, Landmark, Smartphone, Delete, FileText, FileSpreadsheet,
+  Star, Gift, X, ArrowUpDown, MessageCircle, Receipt as ReceiptIcon, Flame, Sparkles, ShieldCheck, Clock, Fingerprint, ChevronDown,
 } from 'lucide-react'
+import { Lang, LANGS, tr, TKey, reminderMessage } from '@/lib/i18n'
+import {
+  View, TxnType, Filter, SortKey, ReminderTab, Reminder, Customer, Txn,
+  customersInit, txnsInit, remindersInit, formatINR, compactINR, localISO, addDays, daysBetween, prettyDate, shortDate,
+  evalExpr, effect, txnSortKey, colorFor, initialsOf, receiptPdf, statementPdf, customersPdf, monthPdf, parseCustomersCsv,
+} from '@/lib/hj'
+import { Art, Avatar, Header, IconBtn, Sheet, EmptyState, Field, inputCls, PrimaryBtn, Segmented, Toggle, Chip } from '@/components/hj/kit'
 
-type View = 'splash'|'home'|'customers'|'customer-detail'|'add-transaction'|'receipt'|'reports'|'backup'|'applock'|'settings'|'reminders'
-type Lang = 'English'|'मराठी'|'हिंदी'
-type TxnType = 'give'|'receive'
-type Filter = 'All'|'Receivable'|'Payable'|'Overdue'
-type ReminderTab = 'Upcoming'|'Overdue'|'Completed'
-type Reminder = { id:string; name:string; amount:number; due:string; status: ReminderTab; type?:string }
-type Customer = { id:string; name:string; phone:string; village?:string; initials:string; color:string; balance:number; totalGiven:number; totalReceived:number; notes?:string }
-type Txn = { id:string; customerId:string; name:string; initials:string; color:string; type:'given'|'received'; amount:number; method:string; time:string; dateLabel:string; bal:number; note?:string; dateISO:string }
-
-const customersInit: Customer[] = [
-  { id:'1', name:'Ramesh Patil', phone:'+91 98765 43210', village:'Sangli, Maharashtra', initials:'RP', color:'#2563eb', balance:12500, totalGiven:45000, totalReceived:32500, notes:'' },
-  { id:'2', name:'Suresh Jadhav', phone:'+91 87654 32109', initials:'SJ', color:'#ec4899', balance:-8000, totalGiven:18000, totalReceived:26000 },
-  { id:'3', name:'Mangal Stores', phone:'+91 91234 56789', initials:'M', color:'#0e8a5a', balance:25300, totalGiven:32000, totalReceived:6700 },
-  { id:'4', name:'Sunita Tai', phone:'+91 99887 77665', initials:'R', color:'#16a34a', balance:0, totalGiven:15000, totalReceived:15000 },
-  { id:'5', name:'Vijay Shetkari', phone:'+91 98989 11223', initials:'B', color:'#f59e0b', balance:-5500, totalGiven:5000, totalReceived:10500 },
-  { id:'6', name:'Shinde Hardware', phone:'+91 91122 33445', initials:'S', color:'#f59e0b', balance:18700, totalGiven:25000, totalReceived:6300 },
+const STORE = 'hisabjod-v2'
+const METHODS: { v: string; k: TKey; icon: typeof Wallet }[] = [
+  { v: 'Cash', k: 'cash', icon: Wallet }, { v: 'UPI', k: 'upi', icon: Smartphone }, { v: 'Bank', k: 'bank', icon: Landmark },
+  { v: 'Card', k: 'card', icon: CreditCard }, { v: 'Other', k: 'other', icon: MoreHorizontal },
 ]
-const txnsInit: Txn[] = [
-  { id:'t1', customerId:'1', name:'Ramesh Patil', initials:'RP', color:'#2563eb', type:'received', amount:2000, method:'Cash', time:'10:30 AM', dateLabel:'Today', bal:12500, dateISO:new Date().toISOString().slice(0,10) },
-  { id:'t2', customerId:'1', name:'Ramesh Patil', initials:'RP', color:'#2563eb', type:'given', amount:5000, method:'Cash', time:'09:15 AM', dateLabel:'Today', bal:14500, dateISO:new Date().toISOString().slice(0,10) },
-  { id:'t3', customerId:'6', name:'Shinde Hardware', initials:'S', color:'#f59e0b', type:'given', amount:3500, method:'Cash', time:'04:20 PM', dateLabel:'Yesterday', bal:9500, dateISO:new Date(Date.now()-86400000).toISOString().slice(0,10) },
-  { id:'t4', customerId:'2', name:'Suresh Jadhav', initials:'SJ', color:'#ec4899', type:'given', amount:5000, method:'UPI', time:'09:15 AM', dateLabel:'Today', bal:8000, note:'Given', dateISO:new Date().toISOString().slice(0,10) },
-]
-const remindersInit: Reminder[] = [
-  { id:'r1', name:'Ramesh Patil', amount:5000, due:'Due Today', status:'Upcoming' },
-  { id:'r2', name:'Suresh Jadhav', amount:3500, due:'Due Tomorrow', status:'Upcoming' },
-  { id:'r3', name:'Monthly Rent', amount:10000, due:'Repeats: 1st every month', status:'Upcoming', type:'rent' },
-  { id:'r4', name:'Vijay Shetkari', amount:7000, due:'Overdue - 3 days', status:'Overdue' },
-]
+type Confirm = { title: string; sub: string; cta: string; onYes: () => void } | null
+type Toast = { msg: string; action?: { label: string; run: () => void } } | null
 
-function formatINR(n:number){ return '₹'+n.toLocaleString('en-IN') }
+const isNativeApp = () => typeof window !== 'undefined' && !!(window as any).Capacitor?.isNativePlatform?.()
 
-export default function Page(){
-  const [view,setView]=useState<View>('splash')
-  const [dark,setDark]=useState(false)
-  const [lang,setLang]=useState<Lang>('English')
-  const [customers,setCustomers]=useState<Customer[]>(customersInit)
-  const [txns,setTxns]=useState<Txn[]>(txnsInit)
-  const [reminders,setReminders]=useState<Reminder[]>(remindersInit)
-  const [selectedId,setSelectedId]=useState('1')
-  const [filter,setFilter]=useState<Filter>('All')
-  const [search,setSearch]=useState('')
-  const [txnType,setTxnType]=useState<TxnType>('receive')
-  const [amount,setAmount]=useState('')
-  const [method,setMethod]=useState('Cash')
-  const [desc,setDesc]=useState('')
-  const [txnDate,setTxnDate]=useState('22 Sep 2026')
-  const [txnDateISO,setTxnDateISO]=useState(new Date().toISOString().slice(0,10))
-  const [lastTxn,setLastTxn]=useState<Txn|null>(null)
-  const [pin,setPin]=useState('')
-  const [storedPin,setStoredPin]=useState('')
-  const [pinMode,setPinMode]=useState<'pin'|'bio'>('pin')
-  const [reminderTab,setReminderTab]=useState<ReminderTab>('Upcoming')
-  const [lockEnabled,setLockEnabled]=useState(false)
-  const [isLocked,setIsLocked]=useState(false)
-  const [detailTab,setDetailTab]=useState<'txns'|'details'|'notes'>('txns')
-  const [notesDraft,setNotesDraft]=useState('')
-  const [toast,setToast]=useState<string|null>(null)
-  const [showAddCust,setShowAddCust]=useState(false)
-  const [showEditCust,setShowEditCust]=useState(false)
-  const [showBiz,setShowBiz]=useState(false)
-  const [showLang,setShowLang]=useState(false)
-  const [showChangeCust,setShowChangeCust]=useState(false)
-  const [showAddReminder,setShowAddReminder]=useState(false)
-  const [newCust,setNewCust]=useState({name:'',phone:'',village:''})
-  const [editCust,setEditCust]=useState({name:'',phone:'',village:''})
-  const [bizName,setBizName]=useState('Shree Kirana')
-  const [bizPhone,setBizPhone]=useState('+91 98765 43210')
-  const [newReminder,setNewReminder]=useState({name:'',amount:''})
-  const [unlockPin,setUnlockPin]=useState('')
-  const fileRef=useRef<HTMLInputElement>(null)
-  const [viewHistory,setViewHistory]=useState<View[]>([])
-  const touchStartX=useRef<number|null>(null)
-  const [referralCode,setReferralCode]=useState('')
-  const [showRatePrompt,setShowRatePrompt]=useState(false)
-  const [installPrompt,setInstallPrompt]=useState<any>(null)
-  const [showReferral,setShowReferral]=useState(false)
-  const [reportMonth,setReportMonth]=useState('2026-09')
-  const [showMonthPicker,setShowMonthPicker]=useState(false)
+export default function Page() {
+  // ---------- core state ----------
+  const [hydrated, setHydrated] = useState(false)
+  const [view, setView] = useState<View>('splash')
+  const [dark, setDark] = useState(false)
+  const [lang, setLang] = useState<Lang>('English')
+  const [customers, setCustomers] = useState<Customer[]>(customersInit)
+  const [txns, setTxns] = useState<Txn[]>(txnsInit)
+  const [reminders, setReminders] = useState<Reminder[]>(remindersInit)
+  const [selectedId, setSelectedId] = useState('1')
+  const [filter, setFilter] = useState<Filter>('All')
+  const [sortKey, setSortKey] = useState<SortKey>('amount')
+  const [search, setSearch] = useState('')
+  const [txnType, setTxnType] = useState<TxnType>('give')
+  const [expr, setExpr] = useState('')
+  const [method, setMethod] = useState('Cash')
+  const [desc, setDesc] = useState('')
+  const [txnDateISO, setTxnDateISO] = useState(localISO())
+  const [lastTxn, setLastTxn] = useState<Txn | null>(null)
+  const [reminderTab, setReminderTab] = useState<ReminderTab>('Upcoming')
+  const [detailTab, setDetailTab] = useState<'txns' | 'details' | 'notes'>('txns')
+  const [notesDraft, setNotesDraft] = useState('')
+  const [toast, setToast] = useState<Toast>(null)
+  const toastTimer = useRef<any>(null)
+  // business
+  const [bizName, setBizName] = useState('Shree Kirana')
+  const [ownerName, setOwnerName] = useState('')
+  const [bizPhone, setBizPhone] = useState('+91 98765 43210')
+  const [bizUpi, setBizUpi] = useState('')
+  // sheets
+  const [sheet, setSheet] = useState<null | 'addCust' | 'editCust' | 'biz' | 'lang' | 'changeCust' | 'addReminder' | 'rate' | 'sort' | 'month' | 'about' | 'txnActions' | 'forgot'>(null)
+  const [confirm, setConfirm] = useState<Confirm>(null)
+  const [newCust, setNewCust] = useState({ name: '', phone: '', village: '', opening: '', dir: 'get' as 'get' | 'give' })
+  const [editCust, setEditCust] = useState({ name: '', phone: '', village: '' })
+  const [newReminder, setNewReminder] = useState({ customerId: '', name: '', amount: '', dueISO: localISO() })
+  const [actionTxn, setActionTxn] = useState<Txn | null>(null)
+  // lock
+  const [storedPin, setStoredPin] = useState('')
+  const [lockEnabled, setLockEnabled] = useState(false)
+  const [isLocked, setIsLocked] = useState(false)
+  const [unlockPin, setUnlockPin] = useState('')
+  const [pinDraft, setPinDraft] = useState('')
+  const [pinFirst, setPinFirst] = useState('')
+  const [shakeKey, setShakeKey] = useState(0)
+  const hiddenAt = useRef<number | null>(null)
+  // misc
+  const [slide, setSlide] = useState(0)
+  const [online, setOnline] = useState(true)
+  const [offlineDismissed, setOfflineDismissed] = useState(false)
+  const [viewHistory, setViewHistory] = useState<View[]>([])
+  const touchStartX = useRef<number | null>(null)
+  const [referralCode, setReferralCode] = useState('')
+  const [installPrompt, setInstallPrompt] = useState<any>(null)
+  const [reportMonth, setReportMonth] = useState(localISO().slice(0, 7))
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const csvRef = useRef<HTMLInputElement>(null)
+  const [native, setNative] = useState(false)
 
-  // smooth flexible navigation
-  function navigateTo(v:View){
-    if(v===view) return
-    setViewHistory(h=> [...h, view])
-    setView(v)
-    try{ if('vibrate' in navigator) (navigator as any).vibrate(10) }catch{}
-    if(typeof window!=='undefined') try{ window.history.pushState({view:v},'') }catch{}
+  const t = useCallback((k: TKey, v?: Record<string, string | number>) => tr(lang, k, v), [lang])
+  const todayISO = localISO()
+  const dayLabel = useCallback((iso: string) => {
+    const d = daysBetween(iso, todayISO)
+    return d === 0 ? t('today') : d === 1 ? t('yesterday') : prettyDate(iso)
+  }, [t, todayISO])
+
+  function showToast(msg: string, action?: { label: string; run: () => void }) {
+    setToast({ msg, action }); clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), action ? 4500 : 2400)
   }
-  function goBack(){
-    setViewHistory(h=>{
-      const prev=h[h.length-1]
-      if(prev){ setView(prev); return h.slice(0,-1) }
-      if(view!=='home' && view!=='splash') setView('home')
-      return h
+  const buzz = (ms = 10) => { try { if ('vibrate' in navigator) (navigator as any).vibrate(ms) } catch { } }
+
+  // ---------- navigation ----------
+  function navigateTo(v: View) {
+    if (v === view) return
+    setViewHistory(h => [...h, view])
+    setView(v); buzz()
+    try { window.history.pushState({ view: v }, '') } catch { }
+  }
+  function replaceView(v: View) { setView(v) }
+  function goTab(v: View) {
+    setViewHistory(v === 'home' ? [] : ['home']); setView(v); buzz(6)
+  }
+  function goBack() {
+    if (sheet) { setSheet(null); return }
+    if (confirm) { setConfirm(null); return }
+    setViewHistory(h => {
+      const prev = h[h.length - 1]
+      if (prev && prev !== 'splash') { setView(prev === 'add-transaction' && view === 'success' ? 'home' : prev); return h.slice(0, -1) }
+      if (view !== 'home' && view !== 'splash') setView('home')
+      return []
     })
-    try{ if('vibrate' in navigator) (navigator as any).vibrate(8) }catch{}
+    buzz(8)
   }
-  function handleTouchStart(e:React.TouchEvent){ touchStartX.current=e.touches[0].clientX }
-  function handleTouchEnd(e:React.TouchEvent){
-    if(touchStartX.current==null) return
-    const dx=e.changedTouches[0].clientX - touchStartX.current
-    if(dx>80 && view!=='splash' && view!=='home'){ goBack() }
-    touchStartX.current=null
+  function onTouchStart(e: React.TouchEvent) { touchStartX.current = e.touches[0].clientX }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current == null) return
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    if (touchStartX.current < 40 && dx > 80 && view !== 'splash' && view !== 'home') goBack()
+    touchStartX.current = null
   }
-
-  // hardware back / browser back
-  useEffect(()=>{
-    const onPop=()=>{ if(view!=='splash' && view!=='home' && !isLocked){ goBack() } }
+  useEffect(() => {
+    const onPop = () => { if (view !== 'splash' && !isLocked) goBack() }
     window.addEventListener('popstate', onPop)
-    return ()=> window.removeEventListener('popstate', onPop)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[view, isLocked])
+    return () => window.removeEventListener('popstate', onPop)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, isLocked, sheet, confirm])
 
-  // persistence
-  useEffect(()=>{
-    try{
-      const raw=localStorage.getItem('hisabjod-v2')
-      if(raw){
-        const d=JSON.parse(raw)
-        if(d.customers) setCustomers(d.customers)
-        if(d.txns) setTxns(d.txns)
-        if(d.reminders) setReminders(d.reminders)
-        if(d.storedPin) setStoredPin(d.storedPin)
-        if(typeof d.lockEnabled==='boolean') setLockEnabled(d.lockEnabled)
-        if(d.bizName) setBizName(d.bizName)
-        if(typeof d.dark==='boolean') setDark(d.dark)
-        if(d.lang) setLang(d.lang)
+  // ---------- persistence ----------
+  useEffect(() => {
+    let onboarded = false
+    try {
+      const raw = localStorage.getItem(STORE)
+      if (raw) {
+        const d = JSON.parse(raw)
+        if (d.customers) setCustomers(d.customers)
+        if (d.txns) setTxns(d.txns)
+        if (d.reminders) setReminders(d.reminders)
+        const pinOk = d.storedPin && d.storedPin !== 'bio' // legacy "biometric" flag could never be unlocked
+        if (pinOk) setStoredPin(d.storedPin)
+        if (typeof d.lockEnabled === 'boolean') setLockEnabled(d.lockEnabled && !!pinOk)
+        if (d.lockEnabled && pinOk) setIsLocked(true)
+        if (d.bizName) setBizName(d.bizName)
+        if (d.ownerName) setOwnerName(d.ownerName)
+        if (d.bizPhone) setBizPhone(d.bizPhone)
+        if (d.bizUpi) setBizUpi(d.bizUpi)
+        if (typeof d.dark === 'boolean') setDark(d.dark)
+        if (d.lang) setLang(d.lang)
+        onboarded = true
       }
-    }catch{}
-  },[])
-  useEffect(()=>{
-    try{ localStorage.setItem('hisabjod-v2', JSON.stringify({customers,txns,reminders,storedPin,lockEnabled,bizName,dark,lang})) }catch{}
-  },[customers,txns,reminders,storedPin,lockEnabled,bizName,dark,lang])
+      if (localStorage.getItem('hisabjod-onboarded')) onboarded = true
+      setLastBackupAt(localStorage.getItem('hisabjod-last-backup'))
+    } catch { }
+    setNative(isNativeApp())
+    setOnline(typeof navigator === 'undefined' ? true : navigator.onLine)
+    setView(onboarded ? 'home' : 'splash')
+    setHydrated(true)
+  }, [])
+  useEffect(() => {
+    if (!hydrated) return
+    try { localStorage.setItem(STORE, JSON.stringify({ customers, txns, reminders, storedPin, lockEnabled, bizName, ownerName, bizPhone, bizUpi, dark, lang })) } catch { }
+  }, [hydrated, customers, txns, reminders, storedPin, lockEnabled, bizName, ownerName, bizPhone, bizUpi, dark, lang])
 
-  useEffect(()=>{ if(lockEnabled && storedPin) setIsLocked(view!=='splash') },[lockEnabled,storedPin,view])
+  // re-lock after the app has been in background > 30s (previously it re-locked on every screen change)
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') hiddenAt.current = Date.now()
+      else if (hiddenAt.current && Date.now() - hiddenAt.current > 30000 && lockEnabled && storedPin) setIsLocked(true)
+    }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [lockEnabled, storedPin])
 
-  // referral ?ref= + PWA install + retention hooks
-  useEffect(()=>{
-    try{
-      const params=new URLSearchParams(window.location.search)
-      const ref=params.get('ref')
-      if(ref){ localStorage.setItem('hisabjod-ref', ref); showToast(`Referral: ${ref}`) }
-      let code=localStorage.getItem('hisabjod-my-ref')
-      if(!code){ code='HJ'+Math.random().toString(36).slice(2,6).toUpperCase(); localStorage.setItem('hisabjod-my-ref', code) }
+  // online / offline
+  useEffect(() => {
+    const on = () => { setOnline(true); setOfflineDismissed(false) }
+    const off = () => setOnline(false)
+    window.addEventListener('online', on); window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+
+  // referral ?ref= + PWA install
+  useEffect(() => {
+    try {
+      const ref = new URLSearchParams(window.location.search).get('ref')
+      if (ref) { localStorage.setItem('hisabjod-ref', ref); showToast(`Referral: ${ref}`) }
+      let code = localStorage.getItem('hisabjod-my-ref')
+      if (!code) { code = 'HJ' + Math.random().toString(36).slice(2, 6).toUpperCase(); localStorage.setItem('hisabjod-my-ref', code) }
       setReferralCode(code)
-      const onBeforeInstall=(e:any)=>{ e.preventDefault(); setInstallPrompt(e) }
-      window.addEventListener('beforeinstallprompt', onBeforeInstall)
-      return ()=> window.removeEventListener('beforeinstallprompt', onBeforeInstall)
-    }catch{}
-  },[])
-  const selected = customers.find(c=>c.id===selectedId) || customers[0]
-  useEffect(()=>{ setNotesDraft(selected?.notes||'') },[selectedId, selected?.notes])
+    } catch { }
+    const onBeforeInstall = (e: any) => { e.preventDefault(); setInstallPrompt(e) }
+    window.addEventListener('beforeinstallprompt', onBeforeInstall)
+    return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const filtered = useMemo(()=>{
-    return customers.filter(c=>{
-      if(filter==='Receivable' && c.balance<=0) return false
-      if(filter==='Payable' && c.balance>=0) return false
-      if(filter==='Overdue' && c.balance<=5000) return false
-      if(search && ! (c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search) || (c.village||'').toLowerCase().includes(search.toLowerCase()))) return false
+  const selected = customers.find(c => c.id === selectedId) || customers[0]
+  useEffect(() => { setNotesDraft(selected?.notes || '') }, [selectedId, selected?.notes])
+
+  // ---------- derived ----------
+  const lastTxnOf = useMemo(() => {
+    const m: Record<string, Txn> = {}
+    for (const x of txns) if (!m[x.customerId] || txnSortKey(x) > txnSortKey(m[x.customerId])) m[x.customerId] = x
+    return m
+  }, [txns])
+  const reminderStatus = useCallback((r: Reminder): ReminderTab => {
+    if (r.status === 'Completed') return 'Completed'
+    if (r.dueISO) return r.dueISO < todayISO ? 'Overdue' : 'Upcoming'
+    return r.status
+  }, [todayISO])
+  const dueText = (r: Reminder) => {
+    if (!r.dueISO) return r.due
+    if (r.type === 'rent') return prettyDate(r.dueISO)
+    const d = daysBetween(todayISO, r.dueISO)
+    return d === 0 ? t('dueToday') : d === 1 ? t('dueTomorrow') : d > 1 ? t('dueIn', { n: d }) : t('overdueBy', { n: -d })
+  }
+  const isOverdue = useCallback((c: Customer) => {
+    if (c.balance <= 0) return false
+    if (reminders.some(r => reminderStatus(r) === 'Overdue' && (r.customerId === c.id || r.name === c.name))) return true
+    const last = lastTxnOf[c.id]
+    const since = last?.dateISO || c.createdAt
+    return !since || daysBetween(since, todayISO) > 30
+  }, [reminders, reminderStatus, lastTxnOf, todayISO])
+
+  const totalReceive = customers.reduce((s, c) => s + (c.balance > 0 ? c.balance : 0), 0)
+  const totalPay = customers.reduce((s, c) => s + (c.balance < 0 ? -c.balance : 0), 0)
+  const net = totalReceive - totalPay
+  const overdueList = customers.filter(isOverdue)
+  const overdueAmt = overdueList.reduce((s, c) => s + c.balance, 0)
+  const todayTxns = txns.filter(x => x.dateISO === todayISO)
+  const todayIn = todayTxns.filter(x => x.type === 'received').reduce((s, x) => s + x.amount, 0)
+  const todayOut = todayTxns.filter(x => x.type === 'given').reduce((s, x) => s + x.amount, 0)
+  const topDebtor = [...customers].sort((a, b) => b.balance - a.balance)[0]
+  const pendingReminders = reminders.filter(r => reminderStatus(r) !== 'Completed' && (r.dueISO ? r.dueISO <= todayISO : r.status === 'Overdue')).length
+
+  const streak = useMemo(() => {
+    const dates = new Set(txns.map(x => x.dateISO))
+    let s = 0; let d = todayISO
+    if (!dates.has(d)) d = addDays(d, -1)
+    while (dates.has(d) && s < 365) { s++; d = addDays(d, -1) }
+    return s
+  }, [txns, todayISO])
+  const checklist = { cust: customers.length > 0, txn: txns.length > 0, backup: !!lastBackupAt }
+  const checklistProgress = (checklist.cust ? 1 : 0) + (checklist.txn ? 1 : 0) + (checklist.backup ? 1 : 0)
+
+  const customerCounts = useMemo(() => ({
+    All: customers.length,
+    Receivable: customers.filter(c => c.balance > 0).length,
+    Payable: customers.filter(c => c.balance < 0).length,
+    Overdue: overdueList.length,
+  }), [customers, overdueList.length])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    const list = customers.filter(c => {
+      if (filter === 'Receivable' && c.balance <= 0) return false
+      if (filter === 'Payable' && c.balance >= 0) return false
+      if (filter === 'Overdue' && !isOverdue(c)) return false
+      if (q && !(c.name.toLowerCase().includes(q) || c.phone.replace(/\s/g, '').includes(q.replace(/\s/g, '')) || (c.village || '').toLowerCase().includes(q))) return false
       return true
     })
-  },[filter,search,customers])
+    if (sortKey === 'name') list.sort((a, b) => a.name.localeCompare(b.name))
+    else if (sortKey === 'recent') list.sort((a, b) => (lastTxnOf[b.id] ? txnSortKey(lastTxnOf[b.id]) : '').localeCompare(lastTxnOf[a.id] ? txnSortKey(lastTxnOf[a.id]) : ''))
+    else list.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+    return list
+  }, [filter, search, customers, sortKey, lastTxnOf, isOverdue])
 
-  const totalReceive = customers.reduce((s,c)=> s + (c.balance>0?c.balance:0),0)
-  const totalPay = customers.reduce((s,c)=> s + (c.balance<0? -c.balance:0),0)
-  const overdueCount = customers.filter(c=>c.balance>10000).length
-  const todayTxns = txns.filter(t=>t.dateLabel==='Today')
-  const todaySum = todayTxns.reduce((s,t)=>s+(t.type==='given'? t.amount : 0)+(t.type==='received'? t.amount : 0),0)
-  // reports derived
-  const totalGivenAll = customers.reduce((s,c)=>s+c.totalGiven,0)
-  const totalReceivedAll = customers.reduce((s,c)=>s+c.totalReceived,0)
-  const outstandingAll = totalReceive
-  // streak: consecutive days with txns up to today
-  const streak = useMemo(()=>{
-    const dates=new Set(txns.map(t=>t.dateISO))
-    dates.add(new Date().toISOString().slice(0,10))
-    let s=0; const d=new Date()
-    for(let i=0;i<30;i++){
-      const iso=d.toISOString().slice(0,10)
-      if(dates.has(iso)) s++
-      else if(i>0) break
-      d.setDate(d.getDate()-1)
-    }
-    return Math.min(s, txns.length? s : 1)
-  },[txns])
-  const checklist = useMemo(()=>({
-    cust: customers.length>0,
-    txn: txns.length>0,
-    backup: typeof window!=='undefined' ? !!localStorage.getItem('hisabjod-last-backup') : false
-  }),[customers.length, txns.length])
-  const checklistProgress = (checklist.cust?1:0)+(checklist.txn?1:0)+(checklist.backup?1:0)
+  // running balance, newest first — robust even after deletes/edits
+  const ledger = useMemo(() => {
+    if (!selected) return [] as { t: Txn; run: number }[]
+    const list = txns.filter(x => x.customerId === selected.id).sort((a, b) => txnSortKey(b).localeCompare(txnSortKey(a)))
+    let run = selected.balance
+    return list.map(x => { const r = { t: x, run }; run -= effect(x); return r })
+  }, [txns, selected])
 
-  // local notifications daily 9am + auto-backup weekly (after streak defined)
-  useEffect(()=>{
-    const isNative=(window as any).Capacitor?.isNativePlatform?.()
-    if(isNative){
-      (async()=>{
-        try{
+  // ---------- notifications / backup nudge — 4hr multicolor retention ----------
+  useEffect(() => {
+    if (!hydrated) return
+    if (native) {
+      (async () => {
+        try {
           const { LocalNotifications } = await import('@capacitor/local-notifications')
-          const perm=await LocalNotifications.requestPermissions()
-          if(perm.display==='granted'){
+          const perm = await LocalNotifications.requestPermissions()
+          if (perm.display === 'granted') {
+            // clear old single 9am notification
+            try { await LocalNotifications.cancel({ notifications: [{ id: 1 }] }); } catch { }
+            try {
+              const pending = await LocalNotifications.getPending()
+              if (pending.notifications?.length) await LocalNotifications.cancel({ notifications: pending.notifications.map(n => ({ id: n.id })) })
+            } catch { }
+            const baseBody = overdueList.length ? `${overdueList.length} customers overdue ${formatINR(overdueAmt)} — send reminders` : `Add today's entries — keep your ${Math.max(streak, 1)}-day streak`
+            const multicolor: { h: number; m: number; color: string; emoji: string; title: string }[] = [
+              { h: 9, m: 0, color: '#0b7a43', emoji: '🌿', title: 'Good morning — HisabJod' },
+              { h: 13, m: 0, color: '#2563eb', emoji: '🔵', title: 'Afternoon check — HisabJod' },
+              { h: 17, m: 0, color: '#f5a524', emoji: '🟡', title: 'Evening reminder — HisabJod' },
+              { h: 21, m: 0, color: '#7c3aed', emoji: '🟣', title: 'Day wrap — HisabJod' },
+            ]
             await LocalNotifications.schedule({
-              notifications:[
-                { title:'HisabJod - Yaad dilaye?', body: overdueCount? `${overdueCount} customers overdue ${formatINR(totalReceive)}` : `Add today's entry - keep streak ${streak}🔥`, id:1, schedule:{ on:{hour:9, minute:0}, allowWhileIdle:true } }
-              ]
+              notifications: multicolor.map((c, idx) => ({
+                id: 101 + idx,
+                title: `${c.emoji} ${c.title}`,
+                body: `${c.emoji} ${baseBody} ${c.emoji}`,
+                smallIcon: 'ic_launcher',
+                // color is used on Android for smallIcon background — multicolor retention
+                schedule: { on: { hour: c.h, minute: c.m }, allowWhileIdle: true },
+                // extra for channel customization if supported
+                channelId: 'hisabjod-retention',
+              } as any)),
             })
+            // create notification channel with multicolor importance (Android)
+            try { await (LocalNotifications as any).createChannel?.({ id: 'hisabjod-retention', name: 'HisabJod Reminders', importance: 4, visibility: 1, lights: true, lightColor: '#0b7a43', vibration: true }) } catch { }
           }
-        }catch{}
+        } catch { }
       })()
     }
-    try{
-      const last=localStorage.getItem('hisabjod-last-backup')
-      if(!last || (Date.now()-new Date(last).getTime()>7*24*60*60*1000)){
-        if(customers.length>0) setTimeout(()=>showToast('Weekly backup due — Backup & Restore'),2000)
+    try {
+      if ((!lastBackupAt || Date.now() - new Date(lastBackupAt).getTime() > 7 * 864e5) && customers.length > 0 && txns.length >= 5 && view === 'home') {
+        const id = setTimeout(() => showToast(t('backupDue'), { label: t('backup'), run: () => navigateTo('backup') }), 2500)
+        return () => clearTimeout(id)
       }
-    }catch{}
-  },[overdueCount, totalReceive, streak, customers.length])
-  // rate prompt after 3 txns
-  useEffect(()=>{
-    if(txns.length===3 && !localStorage.getItem('hisabjod-rated')){
-      setTimeout(()=>setShowRatePrompt(true),1200)
-    }
-  },[txns.length])
+    } catch { }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, native, view === 'home'])
+  // rate prompt after 3 entries
+  useEffect(() => {
+    if (hydrated && txns.length === 3 && !localStorage.getItem('hisabjod-rated')) { const id = setTimeout(() => setSheet('rate'), 1500); return () => clearTimeout(id) }
+  }, [txns.length, hydrated])
 
-  // AdMob - high revenue smart (free SDK, no backend)
-  const interstitialCountRef=useRef(0)
-  const lastInterstitialRef=useRef(0)
-  useEffect(()=>{
-    const isNative=(window as any).Capacitor?.isNativePlatform?.()
-    if(!isNative) return
-    ;(async()=>{
-      try{
+  // ---------- AdMob (unchanged ad units) ----------
+  const interstitialCountRef = useRef(0)
+  const lastInterstitialRef = useRef(0)
+  useEffect(() => {
+    if (!isNativeApp()) return
+    ; (async () => {
+      try {
         const { AdMob } = await import('@capacitor-community/admob')
-        await AdMob.initialize({ requestTrackingAuthorization:true, initializeForTesting:false })
-        // App Open High eCPM - prepare
-        try{ await (AdMob as any).prepareAppOpenAd?.({ adId:'ca-app-pub-1607968585289432/6998555510' }) }catch{}
-      }catch(e){ console.log('AdMob init',e) }
+        await AdMob.initialize({ requestTrackingAuthorization: true, initializeForTesting: false } as any)
+        try { await (AdMob as any).prepareAppOpenAd?.({ adId: 'ca-app-pub-1607968585289432/6998555510' }) } catch { }
+      } catch (e) { console.log('AdMob init', e) }
     })()
-  },[])
-  // Banner - in-content, scrolls with page (no fixed overlay) - in-content div at bottom of Home scrolls
-  async function showAppOpenAd(){
-    try{
+  }, [])
+  // Banner — removed from Home, now inside feature screens with real ads
+  useEffect(() => {
+    if (!isNativeApp()) return
+    const remove = async () => { try { const { AdMob } = await import('@capacitor-community/admob'); await AdMob.removeBanner().catch(() => { }) } catch { } }
+    const bannerViews: View[] = ['customers', 'customer-detail', 'reports', 'reminders', 'backup', 'settings']
+    if (!bannerViews.includes(view) || sheet || isLocked) { remove(); return }
+    ; (async () => {
+      try {
+        const { AdMob, BannerAdSize, BannerAdPosition } = await import('@capacitor-community/admob')
+        await AdMob.removeBanner().catch(() => { })
+        const opts: any = { adId: 'ca-app-pub-1607968585289432/3656322283', adSize: BannerAdSize.ADAPTIVE_BANNER, position: BannerAdPosition.BOTTOM_CENTER, margin: 90, isTesting: false }
+        await AdMob.showBanner(opts)
+      } catch { }
+    })()
+    return () => { remove() }
+  }, [view, sheet, isLocked])
+  async function showAppOpenAd() {
+    if (!isNativeApp()) return
+    try {
       const { AdMob } = await import('@capacitor-community/admob')
-      const isNative=(window as any).Capacitor?.isNativePlatform?.()
-      if(!isNative) return
-      try{ await (AdMob as any).showAppOpenAd?.() }catch{ // fallback try prepare then show
-        try{ await (AdMob as any).prepareAppOpenAd?.({ adId:'ca-app-pub-1607968585289432/6998555510' }); await (AdMob as any).showAppOpenAd?.() }catch{}
+      try { await (AdMob as any).showAppOpenAd?.() } catch {
+        try { await (AdMob as any).prepareAppOpenAd?.({ adId: 'ca-app-pub-1607968585289432/6998555510' }); await (AdMob as any).showAppOpenAd?.() } catch { }
       }
-    }catch{}
+    } catch { }
   }
-  async function showInterstitialSmart(){
-    const now=Date.now()
-    if(now - lastInterstitialRef.current < 120000) return // 2 min cap - policy safe
+  async function showInterstitialSmart() {
+    const now = Date.now()
+    if (now - lastInterstitialRef.current < 120000) return // 2-min cap
     interstitialCountRef.current++
-    if(interstitialCountRef.current % 3 !== 0) return // every 3rd save - high revenue without annoy
-    lastInterstitialRef.current=now
-    try{
+    if (interstitialCountRef.current % 3 !== 0) return // every 3rd save
+    lastInterstitialRef.current = now
+    try {
       const { AdMob } = await import('@capacitor-community/admob')
-      const opts:any={ adId:'ca-app-pub-1607968585289432/2091959177', isTesting:false }
-      await AdMob.prepareInterstitial(opts)
+      await AdMob.prepareInterstitial({ adId: 'ca-app-pub-1607968585289432/2091959177', isTesting: false } as any)
       await AdMob.showInterstitial()
-    }catch{}
+    } catch { }
   }
-  async function showRewardedAd(onReward:()=>void){
-    try{
+  async function showRewardedAd(onReward: () => void) {
+    try {
+      if (!isNativeApp()) { onReward(); return }
       const { AdMob } = await import('@capacitor-community/admob')
-      const isNative=(window as any).Capacitor?.isNativePlatform?.()
-      if(!isNative){ onReward(); return }
-      const opts:any={ adId:'ca-app-pub-1607968585289432/8717077271', isTesting:false }
-      await AdMob.prepareRewardVideoAd(opts)
-      const handler = async (reward:any)=>{ onReward(); showToast('Reward unlocked!') }
+      await AdMob.prepareRewardVideoAd({ adId: 'ca-app-pub-1607968585289432/8717077271', isTesting: false } as any)
+      let done = false
       // @ts-ignore
-      AdMob.addListener('onRewardedVideoAdReward' as any, handler)
+      AdMob.addListener('onRewardedVideoAdReward' as any, () => { if (!done) { done = true; onReward() } })
       await AdMob.showRewardVideoAd()
-      setTimeout(()=>{ try{ (AdMob as any).removeAllListeners?.() }catch{} }, 30000)
-    }catch{ onReward() }
+      setTimeout(() => { try { (AdMob as any).removeAllListeners?.() } catch { } }, 30000)
+    } catch { onReward() }
+  }
+  useEffect(() => {
+    if (hydrated && view === 'home' && !isLocked) { const id = setTimeout(() => showAppOpenAd(), 900); return () => clearTimeout(id) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated])
+
+  // ---------- amount keypad / calculator ----------
+  const hasOp = /[+\-×÷]/.test(expr.replace(/^-/, ''))
+  const amountVal = expr ? evalExpr(expr) : NaN
+  function handleKey(k: string) {
+    buzz(5)
+    if (k === 'del') { setExpr(a => a.slice(0, -1)); return }
+    if (k === 'C') { setExpr(''); return }
+    const ops = ['+', '-', '×', '÷']
+    setExpr(a => {
+      const last = a.slice(-1)
+      if (ops.includes(k)) {
+        if (!a) return a
+        if (ops.includes(last)) return a.slice(0, -1) + k
+        if (last === '.') return a
+        return a.length > 28 ? a : a + k
+      }
+      const seg = a.split(/[+\-×÷]/).pop() || ''
+      if (k === '.') { if (seg.includes('.')) return a; return a + (seg === '' ? '0.' : '.') }
+      if (seg.includes('.') && seg.split('.')[1].length >= 2) return a
+      if (!seg.includes('.') && seg.replace(/^0+/, '').length >= 7) return a
+      if (seg === '0') return a.slice(0, -1) + k
+      return a.length > 28 ? a : a + k
+    })
+  }
+  function quickAdd(n: number) {
+    const cur = Number.isFinite(amountVal) ? amountVal : 0
+    setExpr(String(Math.round((cur + n) * 100) / 100))
   }
 
-  function showToast(msg:string){ setToast(msg); setTimeout(()=>setToast(null),2200) }
-
-  function handleKey(v:string){
-    if(v==='del'){ setAmount(a=>a.slice(0,-1)); return }
-    if(v==='.' && amount.includes('.')) return
-    if(v==='.' && amount==='') { setAmount('0.'); return }
-    if(amount.includes('.') && amount.split('.')[1]?.length>=2) return
-    if(!amount.includes('.') && amount.length>=7) return
-    setAmount(a=>a+v)
+  // ---------- actions ----------
+  function startEntry(type: TxnType, customerId?: string) {
+    if (customers.length === 0) { showToast(t('addCustomerFirst')); setSheet('addCust'); return }
+    if (customerId) setSelectedId(customerId)
+    setTxnType(type); setExpr(''); setDesc(''); setMethod('Cash'); setTxnDateISO(localISO())
+    navigateTo('add-transaction')
   }
-  function saveTxn(){
-    const amt = Number(amount)
-    if(!amt || isNaN(amt)) return showToast('Enter amount')
-    if(amt>1000000) return showToast('Amount too large')
-    const isGive = txnType==='give'
+  function saveTxn() {
+    const amt = amountVal
+    if (!amt || isNaN(amt) || amt <= 0) return showToast(t('enterAmount'))
+    if (amt > 10000000) return showToast(t('amountTooLarge'))
+    const isGive = txnType === 'give'
     const newBal = isGive ? selected.balance + amt : selected.balance - amt
-    const now = new Date()
-    const time = now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
-    const newTxn: Txn = { id:'t'+Date.now(), customerId:selected.id, name:selected.name, initials:selected.initials, color:selected.color, type: isGive?'given':'received', amount:amt, method, time, dateLabel:'Today', bal:newBal, note:desc, dateISO:txnDateISO }
-    setCustomers(prev=> prev.map(c=> c.id===selected.id ? { ...c, balance:newBal, totalGiven: isGive ? c.totalGiven+amt : c.totalGiven, totalReceived: !isGive ? c.totalReceived+amt : c.totalReceived } : c))
-    setTxns(prev=>[newTxn,...prev])
-    setLastTxn(newTxn)
-    setAmount(''); setDesc('')
-    navigateTo('receipt')
-    showToast(isGive? 'Given recorded':'Received recorded')
-    setTimeout(()=>showInterstitialSmart(), 800)
+    const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    const nt: Txn = { id: 't' + Date.now(), customerId: selected.id, name: selected.name, initials: selected.initials, color: selected.color, type: isGive ? 'given' : 'received', amount: amt, method, time, dateLabel: dayLabel(txnDateISO), bal: newBal, note: desc.trim(), dateISO: txnDateISO }
+    setCustomers(prev => prev.map(c => c.id === selected.id ? { ...c, balance: newBal, totalGiven: isGive ? c.totalGiven + amt : c.totalGiven, totalReceived: !isGive ? c.totalReceived + amt : c.totalReceived } : c))
+    setTxns(prev => [nt, ...prev])
+    setLastTxn(nt)
+    setExpr(''); setDesc('')
+    buzz(25)
+    replaceView('success')
+    setTimeout(() => showInterstitialSmart(), 1400)
+  }
+  function deleteTxn(x: Txn) {
+    const snapshot = { customers, txns }
+    setTxns(prev => prev.filter(y => y.id !== x.id))
+    setCustomers(prev => prev.map(c => c.id === x.customerId ? { ...c, balance: c.balance - effect(x), totalGiven: x.type === 'given' ? c.totalGiven - x.amount : c.totalGiven, totalReceived: x.type === 'received' ? c.totalReceived - x.amount : c.totalReceived } : c))
+    showToast(t('entryDeleted'), { label: t('undo'), run: () => { setCustomers(snapshot.customers); setTxns(snapshot.txns); setToast(null) } })
+  }
+  function addCustomer() {
+    const name = newCust.name.trim()
+    if (!name) return showToast(t('nameRequired'))
+    if (newCust.phone && !/^\+?[\d\s-]{7,15}$/.test(newCust.phone)) return showToast(t('invalidPhone'))
+    if (customers.some(c => c.name.toLowerCase() === name.toLowerCase())) { /* allow duplicates but warn */ showToast('⚠ ' + name) }
+    const id = String(Date.now())
+    const opening = Number(newCust.opening) || 0
+    const bal = newCust.dir === 'get' ? opening : -opening
+    const c: Customer = { id, name, phone: newCust.phone.trim() || '-', village: newCust.village.trim(), initials: initialsOf(name), color: colorFor(name), balance: bal, totalGiven: bal > 0 ? bal : 0, totalReceived: bal < 0 ? -bal : 0, notes: '', createdAt: localISO() }
+    setCustomers(p => [c, ...p])
+    if (opening) setTxns(p => [{ id: 't' + Date.now(), customerId: id, name, initials: c.initials, color: c.color, type: bal > 0 ? 'given' : 'received', amount: opening, method: 'Other', time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }), dateLabel: '', bal, note: 'Opening balance', dateISO: localISO() }, ...p])
+    setNewCust({ name: '', phone: '', village: '', opening: '', dir: 'get' }); setSheet(null)
+    setSelectedId(id); showToast(t('customerAdded'))
+    navigateTo('customer-detail'); setDetailTab('txns')
+  }
+  function saveEditCustomer() {
+    const name = editCust.name.trim()
+    if (!name) return showToast(t('nameRequired'))
+    setCustomers(prev => prev.map(c => c.id === selectedId ? { ...c, name, phone: editCust.phone || c.phone, village: editCust.village, initials: initialsOf(name) } : c))
+    setTxns(prev => prev.map(x => x.customerId === selectedId ? { ...x, name, initials: initialsOf(name) } : x))
+    setSheet(null); showToast(t('customerUpdated'))
+  }
+  function openEdit() { setEditCust({ name: selected.name, phone: selected.phone === '-' ? '' : selected.phone, village: selected.village || '' }); setSheet('editCust') }
+  function askDeleteCustomer() {
+    setConfirm({
+      title: t('deleteCustomerQ', { name: selected.name }), sub: t('deleteCustomerSub'), cta: t('delete'), onYes: () => {
+        const id = selected.id
+        setCustomers(p => p.filter(c => c.id !== id)); setTxns(p => p.filter(x => x.customerId !== id))
+        setReminders(p => p.filter(r => r.customerId !== id))
+        goTab('customers'); showToast(t('customerDeleted'))
+      },
+    })
+  }
+  function saveNotes() { setCustomers(prev => prev.map(c => c.id === selectedId ? { ...c, notes: notesDraft } : c)); showToast(t('notesSaved')) }
+  function openAddReminder(c?: Customer) {
+    setNewReminder({ customerId: c?.id || '', name: c?.name || '', amount: c && c.balance > 0 ? String(c.balance) : '', dueISO: addDays(localISO(), 1) })
+    setSheet('addReminder')
+  }
+  function handleAddReminder() {
+    const name = newReminder.name.trim()
+    if (!name || !newReminder.amount) return showToast(t('enterAmount'))
+    setReminders(p => [{ id: 'r' + Date.now(), name, customerId: newReminder.customerId || undefined, amount: Number(newReminder.amount), due: '', status: 'Upcoming', dueISO: newReminder.dueISO }, ...p])
+    setSheet(null); showToast(t('reminderAdded'))
+    if (view !== 'reminders') navigateTo('reminders')
+    setReminderTab(newReminder.dueISO < localISO() ? 'Overdue' : 'Upcoming')
+  }
+  function shareTextViaWhatsApp(phone: string, text: string) {
+    const clean = phone.replace(/\D/g, '')
+    const num = clean.length === 10 ? '91' + clean : clean
+    window.open(num ? `https://wa.me/${num}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer')
+  }
+  function remindCustomer(c: Customer, amount = c.balance) {
+    shareTextViaWhatsApp(c.phone, reminderMessage(lang, c.name, formatINR(Math.abs(amount)), bizName, bizUpi || undefined))
+    showToast(t('reminderSent'))
+  }
+  function shareKhataViaWhatsApp() {
+    const c = selected
+    const txt = `*${bizName} — Khata*\n${c.name} (${c.phone})\n${c.balance > 0 ? `Pending: ${formatINR(c.balance)}` : c.balance < 0 ? `Advance / payable: ${formatINR(-c.balance)}` : 'Settled ✅'}\nTotal given: ${formatINR(c.totalGiven)}\nTotal received: ${formatINR(c.totalReceived)}${bizUpi ? `\nUPI: ${bizUpi}` : ''}\n\nSent via HisabJod`
+    shareTextViaWhatsApp(c.phone, txt)
   }
 
-  async function saveBlobNative(blob:Blob, fileName:string){
-    const isNative = (window as any).Capacitor?.isNativePlatform?.()
-    if(isNative){
-      try{
-        const { Filesystem, Directory } = await import('@capacitor/filesystem')
-        const base64 = await new Promise<string>((res,rej)=>{
-          const r=new FileReader(); r.onload=()=> res((r.result as string).split(',')[1]); r.onerror=rej; r.readAsDataURL(blob)
-        })
-        await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory.Documents })
-        try{
-          const { Share } = await import('@capacitor/share')
-          const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Documents })
-          await Share.share({ title: fileName, text:`Saved to Documents/${fileName}`, url: uri.uri })
-        }catch{}
-        showToast(`Saved to Documents/${fileName}`)
-        return true
-      }catch(e){ console.error(e) }
-    }
+  async function saveBlobNative(blob: Blob, fileName: string, dir: 'Documents' | 'Cache' = 'Documents', shareText?: string) {
+    if (!isNativeApp()) return false
+    try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem')
+      const base64 = await new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res((r.result as string).split(',')[1]); r.onerror = rej; r.readAsDataURL(blob) })
+      await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory[dir] })
+      try {
+        const { Share } = await import('@capacitor/share')
+        const uri = await Filesystem.getUri({ path: fileName, directory: Directory[dir] })
+        await Share.share({ title: fileName, text: shareText || `Saved to Documents/${fileName}`, url: uri.uri, dialogTitle: 'Share' })
+      } catch { }
+      showToast(`Saved: ${fileName}`)
+      return true
+    } catch (e) { console.error(e) }
     return false
   }
-  async function downloadBlob(blob:Blob, fileName:string){
-    if(await saveBlobNative(blob,fileName)) return
-    const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=fileName; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000)
-    // fallback open
-    setTimeout(()=>{ try{ window.open(url,'_blank')}catch{} },300)
+  async function downloadBlob(blob: Blob, fileName: string) {
+    if (await saveBlobNative(blob, fileName)) return
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500)
   }
-  async function exportBackup(){
-    const data = JSON.stringify({customers,txns,reminders,bizName,date:new Date().toISOString()},null,2)
-    const blob = new Blob([data],{type:'application/json'})
-    const fileName=`HisabJod-backup-${new Date().toISOString().slice(0,10)}.json`
-    await downloadBlob(blob,fileName)
-    showToast('Backup saved to Documents')
-    localStorage.setItem('hisabjod-last-backup', new Date().toLocaleString())
-  }
-  function importBackup(e:React.ChangeEvent<HTMLInputElement>){
-    const f=e.target.files?.[0]; if(!f) return
-    const r=new FileReader(); r.onload=()=>{ try{ const d=JSON.parse(String(r.result)); if(d.customers) setCustomers(d.customers); if(d.txns) setTxns(d.txns); if(d.reminders) setReminders(d.reminders); showToast('Restore successful!'); localStorage.setItem('hisabjod-last-backup', new Date().toLocaleString())}catch{showToast('Invalid file')} }; r.readAsText(f)
-    e.target.value=''
-  }
-  async function makePdf(){
-    const t = lastTxn || txns[0]; if(!t) return showToast('No transaction')
-    const pdf=new jsPDF({unit:'mm',format:'a4'})
-    pdf.setFillColor(14,138,90); pdf.rect(0,0,210,36,'F')
-    pdf.setTextColor(255,255,255); pdf.setFont('helvetica','bold'); pdf.setFontSize(20); pdf.text('HisabJod',15,18)
-    pdf.setFontSize(9); pdf.setFont('helvetica','normal'); pdf.text('Digital Khata  •  TRANSACTION RECEIPT',15,26)
-    pdf.setTextColor(30,30,30); pdf.setFont('helvetica','bold'); pdf.setFontSize(12); pdf.text('Transaction Receipt',15,50)
-    const rows=[
-      ['Customer', t.name], ['Date', txnDate+' 10:30 AM'], ['Transaction ID','TXN00'+t.id.slice(-3)],
-      ['Type', t.type==='received'?'Received':'Given'], ['Amount', formatINR(t.amount)], ['Payment Method', t.method],
-      ['Previous Balance', formatINR((t.bal + (t.type==='given'?-t.amount:t.amount)))], ['Remaining Balance', formatINR(t.bal)]
-    ]
-    let y=62; pdf.setFontSize(9); rows.forEach(([k,v])=>{
-      pdf.setFont('helvetica','normal'); pdf.setTextColor(110,110,110); pdf.text(k,15,y)
-      pdf.setFont('helvetica','bold'); pdf.setTextColor(30,30,30); pdf.text(v,70,y)
-      pdf.setDrawColor(230,230,230); pdf.line(15,y+2,195,y+2); y+=9
-    })
-    pdf.setFont('helvetica','italic'); pdf.setTextColor(14,138,90); pdf.text('Thank you!  आपल्या विश्वासाबद्दल धन्यवाद!',15, y+12)
+  async function sharePdf(pdf: any, fileName: string, text: string, phone = '') {
     const blob = pdf.output('blob') as Blob
-    if(await saveBlobNative(blob,'HisabJod-receipt.pdf')) return
-    pdf.save('HisabJod-receipt.pdf')
-    showToast('PDF saved')
+    const file = new File([blob], fileName, { type: 'application/pdf' })
+    try {
+      if ((navigator as any).canShare?.({ files: [file] })) { await (navigator as any).share({ title: fileName, text, files: [file] }); return }
+    } catch { }
+    if (await saveBlobNative(blob, fileName, 'Cache', text)) return
+    shareTextViaWhatsApp(phone, text)
+    pdf.save(fileName); showToast('PDF downloaded — attach in WhatsApp')
   }
-  function shareTextViaWhatsApp(phone:string, text:string){
-    const clean=phone.replace(/\D/g,'')
-    const url = clean ? `https://wa.me/${clean}?text=${encodeURIComponent(text)}` : `https://wa.me/?text=${encodeURIComponent(text)}`
-    window.open(url,'_blank','noopener,noreferrer')
+  async function exportBackup() {
+    const data = JSON.stringify({ app: 'HisabJod', version: 2, customers, txns, reminders, bizName, ownerName, bizPhone, bizUpi, date: new Date().toISOString() }, null, 2)
+    await downloadBlob(new Blob([data], { type: 'application/json' }), `HisabJod-backup-${localISO()}.json`)
+    const at = new Date().toISOString(); localStorage.setItem('hisabjod-last-backup', at); setLastBackupAt(at)
+    showToast(t('backupSaved'))
   }
-  function shareKhataViaWhatsApp(){
-    const c=selected; const txt=`*${bizName} - Khata*\nCustomer: ${c.name} (${c.phone})\nOutstanding: ${c.balance>0?`You will receive ${formatINR(c.balance)}` : c.balance<0?`You will pay ${formatINR(-c.balance)}`:'Settled'}\nTotal Given: ${formatINR(c.totalGiven)}\nTotal Received: ${formatINR(c.totalReceived)}\n\nSent via HisabJod`
-    shareTextViaWhatsApp(c.phone, txt); showToast('Khata shared on WhatsApp')
+  function importBackup(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; if (!f) return
+    const r = new FileReader()
+    r.onload = () => {
+      try {
+        const d = JSON.parse(String(r.result))
+        if (!Array.isArray(d.customers)) throw new Error('bad')
+        setCustomers(d.customers); setTxns(d.txns || []); setReminders(d.reminders || [])
+        if (d.bizName) setBizName(d.bizName); if (d.bizUpi) setBizUpi(d.bizUpi); if (d.ownerName) setOwnerName(d.ownerName)
+        const at = new Date().toISOString(); localStorage.setItem('hisabjod-last-backup', at); setLastBackupAt(at)
+        showToast(t('restoreOk'))
+      } catch { showToast(t('invalidFile')) }
+    }
+    r.readAsText(f); e.target.value = ''
   }
-  function shareReportViaWhatsApp(){
-    const txt=`*${bizName} - Report - Sep 2026*\nTo Receive: ${formatINR(totalReceive)}\nTo Pay: ${formatINR(totalPay)}\nOutstanding: ${formatINR(outstandingAll)}\nTotal Given: ${formatINR(totalGivenAll)}\nTotal Received: ${formatINR(totalReceivedAll)}\nCustomers: ${customers.length}\n\nSent via HisabJod`
-    shareTextViaWhatsApp('', txt); showToast('Report shared on WhatsApp')
+  function importCsv(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; if (!f) return
+    const r = new FileReader()
+    r.onload = () => {
+      const rows = parseCustomersCsv(String(r.result))
+      if (!rows.length) return showToast(t('invalidFile'))
+      const base = Date.now()
+      const newC: Customer[] = rows.map((x, i) => ({ id: String(base + i), name: x.name, phone: x.phone, village: '', initials: initialsOf(x.name), color: colorFor(x.name), balance: x.balance, totalGiven: Math.max(0, x.balance), totalReceived: Math.max(0, -x.balance), notes: '', createdAt: localISO() }))
+      const newT: Txn[] = newC.filter(c => c.balance).map((c, i) => ({ id: 't' + (base + i), customerId: c.id, name: c.name, initials: c.initials, color: c.color, type: c.balance > 0 ? 'given' : 'received', amount: Math.abs(c.balance), method: 'Other', time: '', dateLabel: '', bal: c.balance, note: 'Opening balance', dateISO: localISO() }))
+      setCustomers(p => [...newC, ...p]); setTxns(p => [...newT, ...p])
+      showToast(t('importedN', { n: newC.length }))
+    }
+    r.readAsText(f); e.target.value = ''
   }
-  async function shareReceiptViaWhatsApp(){
-    const t = lastTxn || txns[0]; if(!t) return showToast('No transaction')
-    const pdf=new jsPDF({unit:'mm',format:'a4'})
-    pdf.setFillColor(14,138,90); pdf.rect(0,0,210,36,'F')
-    pdf.setTextColor(255,255,255); pdf.setFont('helvetica','bold'); pdf.setFontSize(20); pdf.text('HisabJod',15,18)
-    pdf.setFontSize(9); pdf.setFont('helvetica','normal'); pdf.text('Digital Khata  •  TRANSACTION RECEIPT',15,26)
-    pdf.setTextColor(30,30,30); pdf.setFont('helvetica','bold'); pdf.setFontSize(12); pdf.text('Transaction Receipt',15,50)
-    const rows=[
-      ['Customer', t.name], ['Date', txnDate+' 10:30 AM'], ['Transaction ID','TXN00'+t.id.slice(-3)],
-      ['Type', t.type==='received'?'Received':'Given'], ['Amount', formatINR(t.amount)], ['Payment Method', t.method],
-      ['Previous Balance', formatINR((t.bal + (t.type==='given'?-t.amount:t.amount)))], ['Remaining Balance', formatINR(t.bal)]
-    ]
-    let y=62; pdf.setFontSize(9); rows.forEach(([k,v])=>{
-      pdf.setFont('helvetica','normal'); pdf.setTextColor(110,110,110); pdf.text(k,15,y)
-      pdf.setFont('helvetica','bold'); pdf.setTextColor(30,30,30); pdf.text(v,70,y)
-      pdf.setDrawColor(230,230,230); pdf.line(15,y+2,195,y+2); y+=9
+  async function exportCSV() {
+    await showRewardedAd(async () => {
+      const header = 'Name,Phone,Village,Balance,Given,Received\n'
+      const rows = customers.map(c => `"${c.name}","${c.phone}","${c.village || ''}",${c.balance},${c.totalGiven},${c.totalReceived}`).join('\n')
+      await downloadBlob(new Blob(['﻿' + header + rows], { type: 'text/csv' }), `HisabJod-customers-${localISO()}.csv`)
     })
-    pdf.setFont('helvetica','italic'); pdf.setTextColor(14,138,90); pdf.text('Thank you!  आपल्या विश्वासाबद्दल धन्यवाद!',15, y+12)
-    const blob = pdf.output('blob') as Blob
-    const fileName=`HisabJod-${t.name.replace(/\s+/g,'_')}-${t.amount}.pdf`
-    const file = new File([blob], fileName, {type:'application/pdf'})
-    const txt = `*HisabJod Receipt*\nCustomer: ${t.name}\nAmount: ${formatINR(t.amount)} (${t.type})\nDate: ${txnDate} 10:30 AM\nBalance: ${formatINR(t.bal)}\n\nThank you!`
-    // 1) Web Share API with files (free, picks WhatsApp directly)
-    try{
-      if((navigator as any).canShare && (navigator as any).canShare({files:[file]})){
-        await (navigator as any).share({title:'HisabJod Receipt', text:txt, files:[file]})
-        showToast('Shared via WhatsApp')
-        return
-      }
-    }catch{}
-    // 2) Capacitor native share (free, shows WhatsApp in sheet)
-    const isNative = (window as any).Capacitor?.isNativePlatform?.()
-    if(isNative){
-      try{
-        const { Filesystem, Directory } = await import('@capacitor/filesystem')
-        const { Share } = await import('@capacitor/share')
-        const base64 = await new Promise<string>((res,rej)=>{
-          const r=new FileReader(); r.onload=()=> res((r.result as string).split(',')[1]); r.onerror=rej; r.readAsDataURL(blob)
-        })
-        await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory.Cache })
-        const uri = await Filesystem.getUri({ path: fileName, directory: Directory.Cache })
-        await Share.share({ title:'HisabJod Receipt', text: txt, url: uri.uri, dialogTitle:'Share via WhatsApp' })
-        showToast('Choose WhatsApp to share PDF')
-        return
-      }catch{}
+  }
+  async function customerReportPdf() {
+    await showRewardedAd(async () => { const p = customersPdf(customers, bizName); if (!(await saveBlobNative(p.output('blob'), 'HisabJod-customers.pdf'))) p.save('HisabJod-customers.pdf') })
+  }
+  async function monthReportPdf(label: string, list: Txn[]) {
+    await showRewardedAd(async () => { const p = monthPdf(label, list, bizName); const fn = `HisabJod-${reportMonth}.pdf`; if (!(await saveBlobNative(p.output('blob'), fn))) p.save(fn) })
+  }
+  async function shareReceipt(x = lastTxn || txns[0]) {
+    if (!x) return
+    const c = customers.find(cc => cc.id === x.customerId)
+    const txt = `*${bizName} — Receipt*\n${x.type === 'received' ? 'Received from' : 'Given to'} ${x.name}: *${formatINR(x.amount)}*\nDate: ${prettyDate(x.dateISO)} ${x.time}\nMode: ${x.method}\nBalance: ${formatINR(x.bal)}\n\nThank you 🙏 — HisabJod`
+    await sharePdf(receiptPdf(x, bizName), `HisabJod-receipt-${x.name.replace(/\s+/g, '_')}-${x.amount}.pdf`, txt, c?.phone || '')
+  }
+  async function saveReceiptPdf(x = lastTxn || txns[0]) {
+    if (!x) return
+    const p = receiptPdf(x, bizName); const fn = `HisabJod-receipt-${x.id.slice(-6)}.pdf`
+    if (!(await saveBlobNative(p.output('blob'), fn))) { p.save(fn); showToast('PDF saved') }
+  }
+  async function shareStatement() {
+    const c = selected
+    await sharePdf(statementPdf(c, ledger, bizName), `HisabJod-${c.name.replace(/\s+/g, '_')}-statement.pdf`, `*${bizName}* — statement for ${c.name}. Balance: ${formatINR(c.balance)}`, c.phone)
+  }
+  function inviteFriends() {
+    const url = typeof window !== 'undefined' ? window.location.origin + '/?ref=' + referralCode : referralCode
+    shareTextViaWhatsApp('', `Try *HisabJod* — free digital khata for dukandars 📒\nSimple • Secure • Offline • Marathi, Hindi, English\nUse my code *${referralCode}*:\n${url}`)
+  }
+  function eraseAll() {
+    setCustomers([]); setTxns([]); setReminders([]); setStoredPin(''); setLockEnabled(false); setIsLocked(false)
+    showToast(t('resetData'))
+    goTab('home')
+  }
+
+  // ---------- PIN ----------
+  function unlockKey(k: string) {
+    if (k === 'del') { setUnlockPin(p => p.slice(0, -1)); return }
+    const next = (unlockPin + k).slice(0, 4)
+    setUnlockPin(next); buzz(5)
+    if (next.length === 4) {
+      setTimeout(() => {
+        if (next === storedPin) { setIsLocked(false); setUnlockPin('') } else { setShakeKey(s => s + 1); buzz(60); setUnlockPin(''); showToast(t('wrongPin')) }
+      }, 120)
     }
-    // 3) Fallback: WhatsApp text + download PDF (free wa.me API)
-    window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank')
-    // also trigger download so user can attach manually if needed
-    pdf.save(fileName)
-    showToast('PDF downloaded — attach in WhatsApp')
   }
-  async function customerReportPdf(){
-    const doExport=async()=>{
-      const pdf=new jsPDF({unit:'mm',format:'a4'})
-      pdf.setFillColor(14,138,90); pdf.rect(0,0,210,28,'F'); pdf.setTextColor(255,255,255); pdf.setFont('helvetica','bold'); pdf.setFontSize(16); pdf.text('HisabJod - Customer Report',15,18)
-      pdf.setTextColor(30,30,30); pdf.setFontSize(10); let y=40; customers.forEach(c=>{ pdf.text(`${c.name} - ${c.phone} - ${c.balance>0?'Receivable '+formatINR(c.balance): c.balance<0?'Payable '+formatINR(-c.balance):'Settled'}`,15,y); y+=7; if(y>280){ pdf.addPage(); y=20 } })
-      const blob = pdf.output('blob') as Blob
-      if(await saveBlobNative(blob,'customer-report.pdf')) return
-      pdf.save('customer-report.pdf'); showToast('Customer report PDF saved')
+  function setupKey(k: string) {
+    if (k === 'del') { setPinDraft(p => p.slice(0, -1)); return }
+    const next = (pinDraft + k).slice(0, 4)
+    setPinDraft(next); buzz(5)
+    if (next.length === 4) {
+      setTimeout(() => {
+        if (!pinFirst) { setPinFirst(next); setPinDraft('') }
+        else if (pinFirst === next) { setStoredPin(next); setLockEnabled(true); setPinFirst(''); setPinDraft(''); showToast(t('pinSaved')); goBack() }
+        else { setShakeKey(s => s + 1); setPinFirst(''); setPinDraft(''); showToast(t('pinMismatch')) }
+      }, 120)
     }
-    // Rewarded high eCPM - watch ad to unlock report
-    await showRewardedAd(doExport)
-  }
-  async function exportCSV(){
-    const doExport=async()=>{
-      const header='Name,Phone,Balance,Given,Received\n'
-      const rows=customers.map(c=>`"${c.name}","${c.phone}",${c.balance},${c.totalGiven},${c.totalReceived}`).join('\n')
-      const blob=new Blob([header+rows],{type:'text/csv'})
-      await downloadBlob(blob,'HisabJod-customers.csv')
-      showToast('CSV exported')
-    }
-    await showRewardedAd(doExport)
   }
 
-  function addCustomer(){
-    if(!newCust.name.trim()) return showToast('Enter name')
-    if(newCust.phone && !/^\+?[\d\s-]{7,15}$/.test(newCust.phone)) return showToast('Invalid phone')
-    const id=String(Date.now())
-    const initials=newCust.name.trim().slice(0,2).toUpperCase()
-    setCustomers(p=>[...p,{id, name:newCust.name.trim(), phone:newCust.phone||'-', village:newCust.village||'', initials, color:'#0e8a5a', balance:0, totalGiven:0, totalReceived:0, notes:''}])
-    setNewCust({name:'',phone:'',village:''}); setShowAddCust(false); showToast('Customer added')
-  }
-  function saveEditCustomer(){
-    if(!editCust.name.trim()) return showToast('Name required')
-    setCustomers(prev=>prev.map(c=>c.id===selectedId? {...c, name:editCust.name.trim(), phone:editCust.phone||c.phone, village:editCust.village||c.village, initials:editCust.name.trim().slice(0,2).toUpperCase() }:c))
-    setShowEditCust(false); showToast('Customer updated')
-  }
-  function openEdit(){
-    setEditCust({name:selected.name, phone:selected.phone, village:selected.village||''})
-    setShowEditCust(true)
-  }
-  function saveNotes(){
-    setCustomers(prev=>prev.map(c=>c.id===selectedId? {...c, notes:notesDraft}:c)); showToast('Notes saved')
-  }
-  function handleAddReminder(){
-    if(!newReminder.name.trim() || !newReminder.amount) return showToast('Enter name & amount')
-    setReminders(p=>[...p,{id:'r'+Date.now(), name:newReminder.name.trim(), amount:Number(newReminder.amount), due:'Due Today', status:'Upcoming'}])
-    setNewReminder({name:'',amount:''}); setShowAddReminder(false); showToast('Reminder added')
-  }
-  function handleSavePin(){
-    if(pin.length!==4) return showToast('Enter 4-digit PIN')
-    if(!/^\d{4}$/.test(pin)) return showToast('PIN must be 4 digits')
-    setStoredPin(pin); setLockEnabled(true); setPin(''); showToast('PIN saved & lock enabled'); navigateTo('settings')
-  }
+  // ---------- reports data ----------
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>(txns.map(x => x.dateISO.slice(0, 7)))
+    const d = new Date(); for (let i = 0; i < 6; i++) { set.add(localISO(new Date(d.getFullYear(), d.getMonth() - i, 1)).slice(0, 7)) }
+    return [...set].sort().reverse().slice(0, 18)
+  }, [txns])
+  const monthLabelOf = (m: string) => new Date(m + '-01T00:00:00').toLocaleDateString(lang === 'English' ? 'en-IN' : lang === 'हिंदी' ? 'hi-IN' : 'mr-IN', { month: 'long', year: 'numeric' })
 
-  const lastBackup = typeof window!=='undefined' ? localStorage.getItem('hisabjod-last-backup') || '22 Sep 2026, 08:30 PM' : '22 Sep 2026, 08:30 PM'
+  const hour = new Date().getHours()
+  const greet = hour < 12 ? t('goodMorning') : hour < 17 ? t('goodAfternoon') : t('goodEvening')
+  const bizInitials = initialsOf(ownerName || bizName)
+  const showNav = hydrated && !['splash', 'applock', 'add-transaction', 'success', 'receipt', 'customer-detail'].includes(view)
+  const navPad = native && view === 'home' ? 'pb-[170px]' : 'pb-[110px]'
 
-  const bg = dark ? 'bg-[#0b1411] text-white' : 'bg-[#f2f7f4] text-[#14201c]'
-  const card = dark ? 'bg-[#18251f] border-white/10' : 'bg-white border-[#e0ece6]'
-  const muted = dark ? 'text-white/60' : 'text-[#6b7c77]'
-  const inputBg = dark ? 'bg-[#0f1e18] border-white/10 text-white placeholder:text-white/40' : 'bg-[#f2f7f4] border-[#dce8e0] text-[#14201c]'
-
+  // ======================================================================
   return (
-    <div className={`min-h-screen flex justify-center p-0 sm:p-6 ${bg} font-[Inter]`}>
-      <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} className={`w-full max-w-[420px] min-h-screen sm:min-h-[860px] sm:rounded-[28px] overflow-hidden relative flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.18)] border ${dark?'border-white/10 bg-[#111d18]':'border-[#cfe3d9] bg-[#f8faf9]'} smooth-scroll`}>
+    <div className={`${dark ? 'dark' : ''} min-h-[100dvh] flex justify-center sm:py-6`} lang={lang === 'English' ? 'en' : lang === 'हिंदी' ? 'hi' : 'mr'} style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+        className="w-full max-w-[430px] h-[100dvh] sm:h-[880px] sm:rounded-[36px] overflow-hidden relative flex flex-col bg-hj-bg text-hj-ink sm:shadow-[0_30px_80px_rgba(7,60,33,.25)] sm:border sm:border-hj-line"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}>
+
+        {/* boot */}
+        {!hydrated && (
+          <div className="flex-1 flex flex-col items-center justify-center bg-hj-bg">
+            <Art name="khata" className="w-28 h-28 pop-enter" />
+            <p className="font-display text-[26px] font-extrabold text-hj-brand mt-2">Hisab<span className="text-hj-gold">Jod</span></p>
+          </div>
+        )}
 
         {/* TOAST */}
-        {toast && <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 bg-[#14201c] text-white text-[11px] font-bold px-4 py-2 rounded-full shadow-lg border border-white/10">{toast}</div>}
+        {toast && (
+          <div className={`fade-enter absolute left-4 right-4 z-[60] ${showNav ? 'bottom-[96px]' : 'bottom-6'} flex items-center gap-3 rounded-2xl bg-[#0f2319] text-white px-4 py-3 shadow-hjlg`}>
+            <Check size={16} className="text-[#4ade80] shrink-0" />
+            <span className="flex-1 text-[13px] font-semibold">{toast.msg}</span>
+            {toast.action && <button onClick={toast.action.run} className="text-[13px] font-extrabold text-[#fbbf24] uppercase tracking-wide">{toast.action.label}</button>}
+          </div>
+        )}
+
         {/* LOCK OVERLAY */}
-        {isLocked && view!=='splash' && (
-          <div className="absolute inset-0 z-40 bg-[#0b1411]/95 backdrop-blur flex flex-col items-center justify-center p-6">
-            <div className="w-14 h-14 rounded-[16px] bg-emerald-600 flex items-center justify-center text-white"><Lock size={22}/></div>
-            <h3 className="text-white font-extrabold mt-3">App Locked</h3>
-            <p className="text-white/60 text-[11px] mt-1">Enter PIN to unlock</p>
-            <div className="flex gap-2 mt-4">{[0,1,2,3].map(i=><div key={i} className={`w-3 h-3 rounded-full ${i < unlockPin.length?'bg-emerald-500':'bg-white/20'}`} />)}</div>
-            <div className="grid grid-cols-3 gap-3 mt-6 w-[180px]">
-              {['1','2','3','4','5','6','7','8','9'].map(n=><button key={n} onClick={()=>unlockPin.length<4 && setUnlockPin(p=>p+n)} className="h-11 rounded-[10px] bg-white/10 text-white border border-white/10 font-bold">{n}</button>)}
-              <button onClick={()=>setUnlockPin('')} className="h-11 rounded-[10px] bg-white/10 text-white border border-white/10 flex items-center justify-center"><X size={16}/></button>
-              <button onClick={()=>unlockPin.length<4 && setUnlockPin(p=>p+'0')} className="h-11 rounded-[10px] bg-white/10 text-white border border-white/10 font-bold">0</button>
-              <button onClick={()=>setUnlockPin(p=>p.slice(0,-1))} className="h-11 rounded-[10px] bg-white/10 text-white border border-white/10 flex items-center justify-center"><Trash2 size={16}/></button>
-            </div>
-            <button onClick={()=>{
-              if(unlockPin===storedPin){ setIsLocked(false); setUnlockPin(''); showToast('Unlocked') } else { showToast('Wrong PIN'); setUnlockPin('') }
-            }} className="mt-6 w-full max-w-[180px] bg-emerald-600 text-white rounded-full py-2.5 font-bold text-[12px]">Unlock</button>
-            <button onClick={()=>{ setLockEnabled(false); setIsLocked(false); showToast('Lock disabled') }} className="mt-2 text-white/60 text-[11px] underline">Disable lock</button>
+        {hydrated && isLocked && view !== 'splash' && (
+          <div className="absolute inset-0 z-[70] bg-gradient-to-b from-[#0b7a43] to-[#053a20] flex flex-col items-center justify-center px-8 text-white">
+            <div className="w-20 h-20 rounded-[26px] bg-white/15 backdrop-blur flex items-center justify-center"><Lock size={32} /></div>
+            <h3 className="font-display font-extrabold text-[22px] mt-5">{t('appLocked')}</h3>
+            <p className="text-white/70 text-[13px] mt-1">{t('enterPinUnlock')}</p>
+            <div key={shakeKey} className={`flex gap-4 mt-6 ${shakeKey ? 'shake' : ''}`}>{[0, 1, 2, 3].map(i => <span key={i} className={`w-4 h-4 rounded-full transition ${i < unlockPin.length ? 'bg-white scale-110' : 'bg-white/25'}`} />)}</div>
+            <PinPad onKey={unlockKey} dark />
+            <button onClick={() => setSheet('forgot')} className="mt-4 text-white/80 text-[13px] font-semibold underline underline-offset-4">{t('forgotPin')}</button>
           </div>
         )}
 
-        {/* ===== SPLASH ===== */}
-        {view==='splash' && (
-          <div className={`page-enter flex-1 flex flex-col px-6 pt-10 pb-6 ${dark?'bg-[#0f1e18]':'bg-gradient-to-b from-[#eaf5ee] via-[#f6fbf7] to-white'}`}>
-            <div className="flex-1 flex flex-col items-center">
-
-              <div className="mt-6 w-[200px] h-[200px] bg-white rounded-[24px] border border-[#cfe3d9] flex items-center justify-center shadow-[0_8px_24px_rgba(14,138,90,.12)] overflow-hidden p-2">
-                <img src="/illustrations/01-hisabjod-hero.png" alt="HisabJod Apna Hisab" className="w-full h-full object-contain" onError={e=>{ (e.target as HTMLImageElement).src='/hisabjod-logo-original.png' }} />
+        {/* ===================== ONBOARDING ===================== */}
+        {hydrated && view === 'splash' && (() => {
+          const slides = [
+            { art: 'hero', title: t('ob1Title'), body: t('ob1Body'), bg: 'from-[#fff6e0] to-hj-bg' },
+            { art: 'shop', title: t('ob2Title'), body: t('ob2Body'), bg: 'from-[#e7f5ec] to-hj-bg' },
+            { art: 'private', title: t('ob3Title'), body: t('ob3Body'), bg: 'from-[#eaf2fd] to-hj-bg' },
+          ]
+          const s = slides[slide]
+          const finish = () => { try { localStorage.setItem('hisabjod-onboarded', '1') } catch { } setViewHistory([]); setView('home'); setTimeout(() => showAppOpenAd(), 900) }
+          return (
+            <div className={`flex-1 flex flex-col bg-gradient-to-b ${dark ? 'from-hj-card2' : s.bg} px-6 pt-5 pb-7 transition-colors`}>
+              <div className="flex items-center justify-between">
+                <p className="font-display text-[20px] font-extrabold text-hj-brand">Hisab<span className="text-hj-gold">Jod</span></p>
+                {slide < 2 && <button onClick={finish} className="text-[13px] font-bold text-hj-muted px-2 py-1">{t('skip')}</button>}
               </div>
-              <h1 className="mt-7 text-[30px] font-extrabold tracking-tight text-[#0a3d2b] dark:text-white">HisabJod</h1>
-              <p className="text-[13px] font-semibold text-[#0e8a5a] -mt-1">Your Digital Khata</p>
-              <p className="text-[11px] mt-1 text-[#6b7c77] dark:text-white/60">Simple. Secure. Offline.</p>
-              <div className="grid grid-cols-3 gap-3 mt-7 w-full">
-                {[
-                  {icon:Users, title:'Track\nCustomers'},
-                  {icon:HandCoins, title:'Manage\nPayments'},
-                  {icon:Bell, title:'Never Miss\nDue Amount'},
-                ].map((f,i)=>(
-                  <div key={i} className={`rounded-[12px] border ${card} p-3 flex flex-col items-center gap-2 text-center`}>
-                    <div className="w-9 h-9 rounded-full bg-[#e6f3ec] dark:bg-[#1e3a2b] flex items-center justify-center text-[#0e8a5a]"><f.icon size={16} /></div>
-                    <span className="text-[10px] font-semibold leading-tight whitespace-pre">{f.title}</span>
-                  </div>
-                ))}
+              <div key={slide} className="page-enter flex-1 flex flex-col items-center justify-center text-center">
+                <div className="relative w-[280px] h-[280px] flex items-center justify-center">
+                  <div className="absolute inset-6 rounded-full bg-white/70 dark:bg-white/5 blur-2xl" />
+                  <Art name={s.art} className={`relative ${s.art === 'hero' ? 'h-[270px] w-auto rounded-[28px] shadow-hjlg' : 'w-[260px] float-y'}`} alt={s.title} />
+                </div>
+                <h1 className="font-display text-[28px] leading-tight font-extrabold text-hj-ink mt-6">{s.title}</h1>
+                <p className="text-[15px] text-hj-muted mt-2 max-w-[300px] leading-relaxed">{s.body}</p>
               </div>
-              <p className="mt-6 text-[11px] font-semibold text-[#0e8a5a] text-center leading-tight">व्यवसाय वाढे<br/>हिशोब आपल्या हातात</p>
-            </div>
-            <button onClick={()=>{
-              if(lockEnabled && storedPin){ navigateTo('home'); setIsLocked(true); } else navigateTo('home')
-              setTimeout(()=>showAppOpenAd(), 900)
-            }} className="w-full mt-6 bg-[#0e8a5a] hover:bg-[#0a6b44] text-white rounded-full py-[14px] font-bold text-[14px] flex items-center justify-center gap-2 shadow-[0_8px_20px_rgba(14,138,90,.3)] btn-press">
-              Get Started <ArrowUpRight size={16} />
-            </button>
-            <div className="mt-3 flex justify-center">
-              <div className={`flex rounded-full p-1 gap-1 border ${dark?'bg-white/10 border-white/10':'bg-white border-[#dce8e0]'}`}>
-                {(['English','मराठी','हिंदी'] as Lang[]).map(l=>(
-                  <button key={l} onClick={()=>{setLang(l); showToast(`Language: ${l}`)}} className={`px-3 py-1 rounded-full text-[11px] font-bold ${lang===l?'bg-[#0e8a5a] text-white':'text-[#6b7c77]'}`}>{l}</button>
-                ))}
+              <div className="flex justify-center gap-2 mb-5">{slides.map((_, i) => <button aria-label={`Slide ${i + 1}`} key={i} onClick={() => setSlide(i)} className={`h-2 rounded-full transition-all ${i === slide ? 'w-7 bg-hj-brand' : 'w-2 bg-hj-line'}`} />)}</div>
+              <PrimaryBtn onClick={() => slide < 2 ? setSlide(slide + 1) : finish()}>{slide < 2 ? t('next') : t('getStarted')} <ArrowUpRight size={18} /></PrimaryBtn>
+              <div className="mt-4 flex justify-center">
+                <div className="flex rounded-full p-1 gap-1 bg-hj-card border border-hj-line shadow-hj">
+                  {LANGS.map(l => <button key={l} onClick={() => setLang(l)} className={`press px-4 h-8 rounded-full text-[13px] font-bold ${lang === l ? 'bg-hj-brand text-white' : 'text-hj-muted'}`}>{l}</button>)}
+                </div>
               </div>
             </div>
-            <div className="mt-4 mx-auto w-24 h-1 rounded-full bg-black/15 dark:bg-white/20" />
-          </div>
-        )}
+          )
+        })()}
 
-        {/* ===== HOME ===== */}
-        {view==='home' && (
-          <>
-            <div className={`${dark?'bg-gradient-to-br from-[#0e8a5a] to-[#083d2b] text-white':'bg-gradient-to-br from-[#dcf0e3] via-[#eef7f2] to-[#f8faf9]'} px-4 pt-3 pb-3 relative overflow-hidden`}>
-              <img src="/illustrations/01-khata.png" alt="" className="absolute -top-2 -right-2 w-20 h-20 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <div className="flex justify-between items-start relative">
-                <div>
-                  <p className={`text-[11px] font-semibold ${dark?'text-white/80':'text-[#6b7c77]'}`}>Good {new Date().getHours()<12?'Morning':new Date().getHours()<18?'Afternoon':'Evening'}</p>
-                  <h2 className="text-[18px] font-extrabold leading-none flex items-center gap-1">{bizName.split(' ')[0]||'Nivrutti'} <span className="text-[14px]">👋</span></h2>
-                  <p className={`text-[10px] ${dark?'text-white/70':'text-[#6b7c77]'}`}>Let&apos;s keep your business growing</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={()=>showToast('No new notifications')} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/15':'bg-white shadow-sm border border-black/5'}`}><Bell size={16} className={dark?'text-white':'text-[#0e8a5a]'} /></button>
-                  <button onClick={()=>goBack()} className="w-8 h-8 rounded-full bg-[#e0e7ff] border-2 border-white flex items-center justify-center text-[10px] font-bold text-[#3730a3]">NA</button>
-                </div>
+        {/* ===================== HOME ===================== */}
+        {hydrated && view === 'home' && (
+          <div className={`page-enter flex-1 overflow-auto scrollbar-hide ${navPad}`}>
+            {/* top bar — safe-area fix for notch/status bar */}
+            <div className="flex items-center gap-3 px-5 pb-3" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
+              <button onClick={() => setSheet('biz')} className="press"><Avatar initials={bizInitials} color="#0b7a43" size={44} /></button>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold text-hj-muted">{greet} 👋</p>
+                <p className="font-display text-[18px] font-extrabold truncate leading-tight">{ownerName || bizName}</p>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-3">
-                <div className={`${dark?'bg-white/10 backdrop-blur border-white/15 text-white':'bg-white border-[#e0ece6]'} border rounded-[14px] p-3 relative overflow-hidden`}>
-                  <img src="/illustrations/01-khata.png" alt="" className="absolute -bottom-1 -right-1 w-12 h-12 opacity-[0.08] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                  <p className={`text-[10px] font-semibold ${dark?'text-white/70':'text-[#6b7c77]'} relative`}>To Receive</p>
-                  <p className="text-[16px] font-extrabold relative">{formatINR(totalReceive)}</p>
-                  <p className={`text-[9px] flex items-center gap-1 ${dark?'text-emerald-200':'text-emerald-600'} relative`}><ArrowUpRight size={10}/> 8% this month</p>
-                </div>
-                <div className={`${dark?'bg-[#ffefe5]/10 border-white/15 text-white':'bg-[#fff1e8] border-[#f5d9c0]'} border rounded-[14px] p-3 relative overflow-hidden`}>
-                  <img src="/illustrations/04-give.png" alt="" className="absolute -bottom-1 -right-1 w-12 h-12 opacity-[0.08] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                  <p className={`text-[10px] font-semibold ${dark?'text-white/70':'text-[#8a5a2b]'} relative`}>To Pay</p>
-                  <p className="text-[16px] font-extrabold relative">{formatINR(totalPay)}</p>
-                  <p className={`text-[9px] flex items-center gap-1 ${dark?'text-orange-200':'text-orange-600'} relative`}><ArrowUpRight size={10}/> 2% this month</p>
-                </div>
-                <div className={`${card} rounded-[14px] p-3 flex items-center gap-2 relative overflow-hidden`}>
-                  <img src="/illustrations/08-never-miss-payment.png" alt="" className="absolute -bottom-1 -right-1 w-10 h-10 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                  <div className="w-7 h-7 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 relative"><Clock size={14}/></div>
-                  <div className="relative"><p className={`text-[11px] font-extrabold ${dark?'text-white':''}`}>Overdue</p><p className={`text-[10px] font-bold ${dark?'text-white':'text-[#6b7c77]'}`}>{overdueCount} Customers</p></div>
-                </div>
-                <div className={`${card} rounded-[14px] p-3 flex items-center gap-2 relative overflow-hidden`}>
-                  <img src="/illustrations/14-track-today.png" alt="" className="absolute -bottom-1 -right-1 w-10 h-10 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                  <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 relative"><BarChart3 size={14}/></div>
-                  <div className="relative"><p className="text-[10px] font-semibold text-[#6b7c77]">Today&apos;s Activity</p><p className={`text-[13px] font-extrabold ${dark?'text-white':'text-[#14201c]'}`}>{formatINR(todaySum)}</p><p className="text-[9px] text-[#6b7c77]">{todayTxns.length} transactions</p></div>
-                </div>
-              </div>
-              <div className="grid grid-cols-4 gap-2 mt-3">
-                {[
-                  {label:'Add Customer', icon:Users, bg:'bg-[#3b82f6]', action:()=>setShowAddCust(true)},
-                  {label:'Give', icon:ArrowUpRight, bg:'bg-[#0e8a5a]', action:()=>{setTxnType('give'); if(customers.length===0) showToast('Add customer first'); else navigateTo('add-transaction')}},
-                  {label:'Receive', icon:ArrowDownLeft, bg:'bg-[#f97316]', action:()=>{setTxnType('receive'); if(customers.length===0) showToast('Add customer first'); else navigateTo('add-transaction')}},
-                  {label:'View Report', icon:FileText, bg:'bg-[#8b5cf6]', action:()=>navigateTo('reports')},
-                ].map(b=>(
-                  <button key={b.label} onClick={b.action} className="flex flex-col items-center gap-1.5">
-                    <div className={`w-11 h-11 rounded-[12px] ${b.bg} text-white flex items-center justify-center shadow-md`}><b.icon size={18}/></div>
-                    <span className={`text-[9px] font-semibold leading-tight text-center ${dark?'text-white':'text-[#14201c]'}`}>{b.label}</span>
+              <button aria-label={t('reminders')} onClick={() => navigateTo('reminders')} className="press relative w-11 h-11 rounded-full bg-hj-card border border-hj-line shadow-hj flex items-center justify-center">
+                <Bell size={19} className="text-hj-ink" />
+                {pendingReminders > 0 && <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-hj-give text-white text-[10px] font-extrabold flex items-center justify-center ring-2 ring-hj-bg">{pendingReminders}</span>}
+              </button>
+            </div>
+
+            {/* hero balance card */}
+            <div className="px-5">
+              <div className="relative overflow-hidden rounded-[28px] p-5 text-white bg-[radial-gradient(120%_120%_at_0%_0%,#14a05a_0%,#0b7a43_45%,#064d2a_100%)] shadow-hjlg">
+                <div className="absolute -right-10 -top-10 w-44 h-44 rounded-full bg-white/10" />
+                <div className="absolute right-10 -bottom-16 w-40 h-40 rounded-full bg-[#f5a524]/20" />
+                <Art name="growth" className="absolute right-1 top-4 w-[108px] opacity-95 drop-shadow-xl" />
+                <p className="relative text-[12px] font-semibold text-white/75 uppercase tracking-wider">{t('netBalance')}</p>
+                <p className="relative font-display text-[34px] font-extrabold leading-tight tnum mt-0.5">{formatINR(Math.abs(net))}</p>
+                <p className="relative text-[12px] font-semibold text-white/80">{net >= 0 ? t('youWillGet') : t('youWillGive')} • {t('customersN', { n: customers.length })}</p>
+                <div className="relative grid grid-cols-2 gap-2.5 mt-4">
+                  <button onClick={() => { setFilter('Receivable'); goTab('customers') }} className="press text-left rounded-2xl bg-white/12 backdrop-blur border border-white/15 px-3.5 py-2.5">
+                    <span className="flex items-center gap-1.5 text-[11px] font-semibold text-white/75"><span className="w-5 h-5 rounded-full bg-[#4ade80]/25 flex items-center justify-center"><ArrowDownLeft size={12} /></span>{t('toReceive')}</span>
+                    <span className="block font-display text-[18px] font-extrabold tnum mt-1">{formatINR(totalReceive)}</span>
                   </button>
-                ))}
-              </div>
-            </div>
-            {/* RETENTION BANNERS */}
-            <div className="px-3 pt-2 space-y-2">
-              {installPrompt && (
-                <div className="flex items-center gap-3 p-3 rounded-[12px] border bg-[#0e8a5a] text-white border-[#0a6b44]">
-                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"><Download size={14}/></div>
-                  <div className="flex-1"><p className="text-[11px] font-bold">Install HisabJod</p><p className="text-[9px] opacity-80">Add to home screen — works offline</p></div>
-                  <button onClick={async()=>{ installPrompt.prompt(); const r=await installPrompt.userChoice; if(r.outcome==='accepted') showToast('Installed!'); setInstallPrompt(null) }} className="px-3 py-1.5 rounded-full bg-white text-[#0e8a5a] text-[10px] font-bold">Install</button>
-                  <button onClick={()=>setInstallPrompt(null)} className="text-white/70"><X size={14}/></button>
-                </div>
-              )}
-              {checklistProgress<3 && (
-                <div className={`${card} border rounded-[12px] p-3`}>
-                  <div className="flex justify-between items-center"><p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Complete setup {checklistProgress}/3</p><span className="text-[9px] font-bold text-[#0e8a5a]">{Math.round(checklistProgress/3*100)}%</span></div>
-                  <div className="mt-2 h-1.5 bg-[#e0ece6] rounded-full overflow-hidden"><div className="h-full bg-[#0e8a5a] transition-all" style={{width:`${checklistProgress/3*100}%`}} /></div>
-                  <div className="mt-2 grid grid-cols-3 gap-1.5 text-[9px] font-semibold">
-                    <span className={`flex items-center gap-1 ${checklist.cust?'text-emerald-600':'text-[#6b7c77]'}`}>{checklist.cust? <Check size={10}/>:<span className="w-3 h-3 rounded-full border border-[#6b7c77]"/>} Customer</span>
-                    <span className={`flex items-center gap-1 ${checklist.txn?'text-emerald-600':'text-[#6b7c77]'}`}>{checklist.txn? <Check size={10}/>:<span className="w-3 h-3 rounded-full border border-[#6b7c77]"/>} Transaction</span>
-                    <span className={`flex items-center gap-1 ${checklist.backup?'text-emerald-600':'text-[#6b7c77]'}`}>{checklist.backup? <Check size={10}/>:<span className="w-3 h-3 rounded-full border border-[#6b7c77]"/>} Backup</span>
-                  </div>
-                  {!checklist.cust && <button onClick={()=>setShowAddCust(true)} className="mt-2 text-[10px] font-bold text-[#0e8a5a]">Add first customer →</button>}
-                  {checklist.cust && !checklist.txn && <button onClick={()=>navigateTo('add-transaction')} className="mt-2 text-[10px] font-bold text-[#0e8a5a]">Add first transaction →</button>}
-                  {checklist.cust && checklist.txn && !checklist.backup && <button onClick={()=>navigateTo('backup')} className="mt-2 text-[10px] font-bold text-[#0e8a5a]">Create backup →</button>}
-                </div>
-              )}
-              {overdueCount>0 && (
-                <div className="flex items-center gap-3 p-3 rounded-[12px] border bg-orange-50 border-orange-200 dark:bg-orange-900/20 dark:border-orange-800">
-                  <div className="w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center"><Clock size={14}/></div>
-                  <div className="flex-1"><p className="text-[11px] font-bold text-orange-900 dark:text-orange-200">{overdueCount} customers overdue {formatINR(totalReceive)}</p><p className="text-[9px] text-orange-700 dark:text-orange-300">Send WhatsApp reminders now</p></div>
-                  <button onClick={()=>navigateTo('reminders')} className="px-3 py-1.5 rounded-full bg-orange-600 text-white text-[10px] font-bold">Remind</button>
-                </div>
-              )}
-              {streak>=2 && (
-                <div className="flex items-center gap-3 p-3 rounded-[12px] border bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 dark:from-amber-900/20 dark:to-orange-900/20 dark:border-amber-800">
-                  <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center">🔥</div>
-                  <div className="flex-1"><p className="text-[11px] font-bold text-amber-900 dark:text-amber-200">{streak}-day streak!</p><p className="text-[9px] text-amber-700 dark:text-amber-300">Keep it up — add today&apos;s entry</p></div>
-                  <span className="text-[11px] font-extrabold text-amber-600">{streak} 🔥</span>
-                </div>
-              )}
-              <div className={`${card} border rounded-[12px] p-3 flex items-center gap-3`}>
-                <div className="w-8 h-8 rounded-full bg-[#25D366] text-white flex items-center justify-center"><Share2 size={14}/></div>
-                <div className="flex-1"><p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Invite & Earn</p><p className="text-[9px] text-[#6b7c77]">Code: <span className="font-bold text-[#0e8a5a]">{referralCode}</span> • Share & get Pro</p></div>
-                <button onClick={()=>{
-                  const url=typeof window!=='undefined'? window.location.origin+'/?ref='+referralCode : referralCode
-                  const txt=`Try HisabJod - Digital Khata! *Simple. Secure. Offline.*\nJoin with my code *${referralCode}*:\n${url}\n\nMarathi • Hindi • English`
-                  shareTextViaWhatsApp('', txt)
-                }} className="px-3 py-1.5 rounded-full bg-[#0e8a5a] text-white text-[10px] font-bold">Invite</button>
-              </div>
-            </div>
-            {/* Banner - in-content middle, scrolls with Home */}
-            <div className="mx-3 mt-2 p-2 rounded-[12px] border bg-white shadow-sm">
-              <p className="text-[8px] font-bold tracking-widest text-[#6b7c77] text-center">ADVERTISEMENT</p>
-              <div className="mt-1 h-[60px] bg-[#f8faf9] border border-[#e0ece6] rounded-[8px] flex items-center justify-center gap-2">
-                <span className="text-[10px] font-bold text-[#0e8a5a]">banner_hisab</span>
-                <span className="text-[8px] bg-black text-white px-1.5 py-0.5 rounded">Test Ad</span>
-                <span className="text-[9px] text-[#6b7c77]">3656322283 • 320×50</span>
-              </div>
-            </div>
-            <div className="page-enter flex-1 px-4 pt-3 pb-20 overflow-auto scrollbar-hide">
-              <div className="flex justify-between items-center mb-2">
-                <h3 className={`text-[13px] font-bold ${dark?'text-white':''}`}>Recent Transactions</h3>
-                <button onClick={()=>navigateTo('reports')} className="text-[11px] font-bold text-[#0e8a5a]">See All</button>
-              </div>
-              <div className="space-y-2">
-                {txns.slice(0,5).map(t=>(
-                  <button key={t.id} onClick={()=>{setSelectedId(t.customerId); navigateTo('customer-detail')}} className={`w-full text-left flex items-center gap-3 ${card} border rounded-[12px] p-3`}>
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-[11px] font-bold" style={{background:t.color}}>{t.initials}</div>
-                    <div className="flex-1 min-w-0 text-left">
-                      <p className={`text-[12px] font-bold truncate ${dark?'text-white':''}`}>{t.name}</p>
-                      <p className="text-[10px] text-[#6b7c77]">{t.type==='received'?'Received':'Given'} {formatINR(t.amount)} • {t.dateLabel}, {t.time}</p>
-                    </div>
-                    <span className={`text-[11px] font-extrabold ${t.type==='received'?'text-emerald-600':'text-red-500'}`}>{t.type==='received'?'+': '-'}{formatINR(t.amount)}</span>
+                  <button onClick={() => { setFilter('Payable'); goTab('customers') }} className="press text-left rounded-2xl bg-white/12 backdrop-blur border border-white/15 px-3.5 py-2.5">
+                    <span className="flex items-center gap-1.5 text-[11px] font-semibold text-white/75"><span className="w-5 h-5 rounded-full bg-[#fca5a5]/25 flex items-center justify-center"><ArrowUpRight size={12} /></span>{t('toPay')}</span>
+                    <span className="block font-display text-[18px] font-extrabold tnum mt-1">{formatINR(totalPay)}</span>
                   </button>
-                ))}
-                {txns.length===0 && (
-                  <div className="flex flex-col items-center py-6">
-                    <img src="/illustrations/03-no-transactions.png" alt="No Transactions" className="w-36 h-36 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                    <p className="text-[13px] font-bold mt-2">No Transactions Yet</p>
-                    <p className="text-[11px] text-[#6b7c77] text-center">Start adding transactions<br/>and keep your hisab organized</p>
-                    <button onClick={()=>navigateTo('add-transaction')} className="mt-3 px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[11px] font-bold">Add Transaction</button>
-                  </div>
-                )}
-              </div>
-
-            </div>
-          </>
-        )}
-
-        {/* ===== CUSTOMERS ===== */}
-        {view==='customers' && (
-          <div className="page-enter flex-1 flex flex-col overflow-hidden">
-            <div className={`px-4 pt-3 pb-2 border-b ${dark?'border-white/10 bg-[#111d18]':'bg-white border-[#e0ece6]'} sticky top-0 z-10 relative overflow-hidden`}>
-              <img src="/illustrations/03-customers.png" alt="" className="absolute -top-1 -right-2 w-16 h-16 opacity-[0.06] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <div className="flex items-center justify-between relative">
-                <h2 className={`text-[16px] font-extrabold ${dark?'text-white':''}`}>Customers</h2>
-                <button onClick={()=>showToast(`${customers.length} customers`)} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><Search size={16} className={muted}/></button>
-              </div>
-              <div className={`mt-2 flex items-center gap-2 rounded-full border px-3 py-2 ${inputBg}`}>
-                <Search size={14} className={muted} />
-                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name, mobile, village..." className="flex-1 bg-transparent outline-none text-[11px]" />
-                {search && <button onClick={()=>setSearch('')}><X size={14} className={muted}/></button>}
-              </div>
-              <div className="flex gap-2 mt-2 overflow-auto scrollbar-hide pb-1">
-                {(['All','Receivable','Payable','Overdue'] as Filter[]).map(f=>(
-                  <button key={f} onClick={()=>setFilter(f)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap border ${filter===f?'bg-[#0e8a5a] text-white border-[#0e8a5a]': dark?'bg-white/10 text-white/70 border-white/10':'bg-[#f2f7f4] text-[#6b7c77] border-[#e0ece6]'}`}>{f}</button>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 overflow-auto px-3 py-2 space-y-2 pb-20 scrollbar-hide">
-              {filtered.map((c,i)=>(
-                <div key={c.id}>
-                  <button onClick={()=>{setSelectedId(c.id);setDetailTab('txns');navigateTo('customer-detail')}} className={`w-full text-left flex items-center gap-3 p-3 rounded-[14px] border ${card} hover:shadow-md transition card-press`}>
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[11px]" style={{background:c.color}}>{c.initials}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-[12px] font-bold truncate ${dark?'text-white':''}`}>{c.name}</p>
-                      <p className="text-[10px] text-[#6b7c77]">{c.phone}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-[12px] font-extrabold ${c.balance>0?'text-emerald-600':c.balance<0?'text-red-500':'text-[#6b7c77]'}`}>{c.balance===0?'₹0':formatINR(Math.abs(c.balance))}</p>
-                      <span className={`inline-block mt-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold ${c.balance>0?'bg-emerald-100 text-emerald-700':c.balance<0?'bg-red-100 text-red-600':'bg-gray-100 text-gray-600'}`}>{c.balance>0?'Receivable':c.balance<0?'Payable':'Settled'}</span>
-                    </div>
-                    <ChevronRight size={14} className="text-[#6b7c77] shrink-0" />
-                  </button>
-                  {i===2 && (
-                    <div className={`${card} border rounded-[12px] p-3 mt-2 flex flex-col items-center justify-center bg-gradient-to-r from-[#e6f3ec] via-white to-[#e6f3ec] text-center`}>
-                      <p className="text-[8px] font-bold tracking-widest text-[#6b7c77]">NATIVE AD</p>
-                      <p className="text-[9px] text-[#0e8a5a] font-mono">Native_hisabjob • 7712871386</p>
-                      <p className="text-[10px] font-bold mt-1">HisabJod Pro — Unlock premium</p>
-                      <button onClick={()=>showRewardedAd(()=>showToast('Pro unlocked!'))} className="mt-2 px-3 py-1 rounded-full bg-[#0e8a5a] text-white text-[9px] font-bold">Watch Rewarded Ad</button>
-                    </div>
-                  )}
                 </div>
-              ))}
-              {filtered.length===0 && (
-                <div className="flex flex-col items-center py-8">
-                  <img src={customers.length===0 ? "/illustrations/02-no-customers.png" : "/illustrations/05-no-results.png"} alt={customers.length===0 ? "No Customers" : "No Results"} className="w-40 h-40 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                  <p className="text-[13px] font-bold mt-3">{customers.length===0 ? "No Customers Yet" : "No Results Found"}</p>
-                  <p className="text-[11px] text-[#6b7c77] text-center">{customers.length===0 ? <>Add your first customer<br/>to start your digital khata</> : <>Try a different name<br/>or check the spelling</>}</p>
-                  <button onClick={()=>setShowAddCust(true)} className="mt-3 px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[11px] font-bold">{customers.length===0 ? "Add Customer" : "Clear Search"}</button>
-                </div>
-              )}
-            </div>
-            <button onClick={()=>setShowAddCust(true)} className="absolute bottom-20 right-4 w-12 h-12 rounded-full bg-[#0e8a5a] text-white flex items-center justify-center shadow-lg">
-              <Plus size={22} />
-            </button>
-          </div>
-        )}
-
-        {/* ===== CUSTOMER DETAIL ===== */}
-        {view==='customer-detail' && (
-          <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-6">
-            <div className={`sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'}`}>
-              <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><ArrowLeft size={16}/></button>
-              <div className="flex items-center gap-2">
-                <button onClick={shareKhataViaWhatsApp} className="w-8 h-8 rounded-full bg-[#25D366] text-white flex items-center justify-center" title="Share Khata on WhatsApp"><Share2 size={14}/></button>
-                <button onClick={()=>showToast('More options coming soon')} className={muted}><MoreHorizontal size={18}/></button>
               </div>
             </div>
-            <div className="flex flex-col items-center pt-4 px-4">
-              <div className="w-16 h-16 rounded-full flex items-center justify-center text-white font-extrabold text-[18px]" style={{background:selected.color}}>{selected.initials}</div>
-              <h3 className={`text-[16px] font-extrabold mt-2 ${dark?'text-white':''}`}>{selected.name}</h3>
-              <p className="text-[11px] text-[#6b7c77] flex items-center gap-1"><Phone size={12}/>{selected.phone}</p>
-              {selected.village && <p className="text-[11px] text-[#6b7c77] flex items-center gap-1"><MapPin size={12}/>{selected.village}</p>}
-              <span className="mt-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[9px] font-bold">{selected.balance>0?'Receivable':selected.balance<0?'Payable':'Settled'}</span>
-              <button onClick={()=>{ if(navigator.share) navigator.share({title:selected.name, text:`Contact ${selected.name} ${selected.phone}`}).catch(()=>{}) ; else { navigator.clipboard.writeText(selected.phone); showToast('Phone copied')}}} className="mt-2 text-[11px] font-bold text-[#0e8a5a] flex items-center gap-1"><Phone size={12}/> Call / Share</button>
-            </div>
-            <div className="grid grid-cols-4 gap-2 px-4 mt-4">
+
+            {/* offline */}
+            {!online && !offlineDismissed && (
+              <div className="page-enter mx-5 mt-4 flex items-center gap-3 rounded-3xl bg-hj-pinksoft p-3 pr-4">
+                <Art name="offline" className="w-14 h-14" />
+                <div className="flex-1"><p className="font-bold text-[14px]">{t('offlineTitle')}</p><p className="text-[12px] text-hj-muted leading-snug">{t('offlineSub')}</p></div>
+                <button aria-label={t('close')} onClick={() => setOfflineDismissed(true)} className="text-hj-muted"><X size={18} /></button>
+              </div>
+            )}
+
+            {/* quick actions */}
+            <div className="grid grid-cols-4 gap-2.5 px-5 mt-5">
               {[
-                {label:'Give', icon:ArrowUpRight, bg:'bg-[#0e8a5a]', c:'text-white', act:()=>{setTxnType('give');navigateTo('add-transaction')}},
-                {label:'Receive', icon:ArrowDownLeft, bg:'bg-[#ef4444]', c:'text-white', act:()=>{setTxnType('receive');navigateTo('add-transaction')}},
-                {label:'Remind', icon:Bell, bg: dark?'bg-white/10':'bg-[#e0f2fe]', c: dark?'text-white':'text-[#0284c7]', act:()=>{
-                  setReminders(r=>[...r,{id:'r'+Date.now(), name:selected.name, amount:Math.abs(selected.balance)||1000, due:'Due Today', status:'Upcoming'}]); showToast('Reminder set for '+selected.name); navigateTo('reminders')
-                }},
-                {label:'Edit', icon:Pencil, bg: dark?'bg-white/10':'bg-[#f2f7f4]', c: dark?'text-white':'text-[#6b7c77]', act:()=>openEdit()},
-              ].map(b=>(
-                <button key={b.label} onClick={b.act} className="flex flex-col items-center gap-1">
-                  <div className={`w-12 h-12 rounded-[12px] ${b.bg} ${b.c} flex items-center justify-center`}><b.icon size={16}/></div>
-                  <span className={`text-[10px] font-semibold ${dark?'text-white':''}`}>{b.label}</span>
+                { label: t('youGave'), art: 'give', bg: 'bg-hj-givesoft', act: () => startEntry('give') },
+                { label: t('youGot'), art: 'receive', bg: 'bg-hj-getsoft', act: () => startEntry('receive') },
+                { label: t('addCustomer'), art: 'add-user', bg: 'bg-hj-bluesoft', act: () => setSheet('addCust') },
+                { label: t('reports'), art: 'analytics', bg: 'bg-hj-goldsoft', act: () => goTab('reports') },
+              ].map(b => (
+                <button key={b.label} onClick={b.act} className="press flex flex-col items-center gap-1.5">
+                  <span className={`w-full aspect-square rounded-[22px] ${b.bg} flex items-center justify-center overflow-hidden`}><Art name={b.art} className="w-[86%]" /></span>
+                  <span className="text-[12px] font-bold text-hj-ink2 text-center leading-tight">{b.label}</span>
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-3 gap-2 px-4 mt-4">
-              <div className={`${card} border rounded-[12px] p-2 text-center`}>
-                <p className="text-[9px] text-[#6b7c77] font-semibold">Total Given</p>
-                <p className="text-[12px] font-extrabold text-red-500">{formatINR(selected.totalGiven)}</p>
+
+            {/* today strip */}
+            <div className="mx-5 mt-5 grid grid-cols-3 rounded-3xl bg-hj-card border border-hj-line shadow-hj divide-x divide-hj-line">
+              {[
+                { l: t('today'), v: t('txnsN', { n: todayTxns.length }), c: 'text-hj-ink' },
+                { l: t('collected'), v: formatINR(todayIn), c: 'text-hj-get' },
+                { l: t('given'), v: formatINR(todayOut), c: 'text-hj-give' },
+              ].map(k => (
+                <div key={k.l} className="px-3 py-3 text-center"><p className="text-[11px] font-semibold text-hj-muted truncate">{k.l}</p><p className={`font-display text-[15px] font-extrabold tnum mt-0.5 truncate ${k.c}`}>{k.v}</p></div>
+              ))}
+            </div>
+
+            {/* overdue / insight */}
+            {overdueList.length > 0 ? (
+              <div className="mx-5 mt-4 relative overflow-hidden rounded-3xl bg-hj-goldsoft p-4 pr-3 flex items-center gap-3">
+                <Art name="bell" className="w-16 h-16 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-display font-extrabold text-[15px]">{t('overdueBanner', { n: overdueList.length, amt: formatINR(overdueAmt) })}</p>
+                  <p className="text-[12px] text-hj-muted leading-snug mt-0.5">{t('overdueSub')}</p>
+                </div>
+                <button onClick={() => { setFilter('Overdue'); goTab('customers') }} className="press shrink-0 h-10 px-4 rounded-full bg-hj-ink text-hj-bg text-[13px] font-bold">{t('remind')}</button>
               </div>
-              <div className={`${card} border rounded-[12px] p-2 text-center`}>
-                <p className="text-[9px] text-[#6b7c77] font-semibold">Total Received</p>
-                <p className="text-[12px] font-extrabold text-emerald-600">{formatINR(selected.totalReceived)}</p>
+            ) : topDebtor && topDebtor.balance > 0 && (
+              <div className="mx-5 mt-4 rounded-3xl bg-hj-card border border-hj-line p-4 flex items-center gap-3 shadow-hj">
+                <span className="w-11 h-11 rounded-2xl bg-hj-purplesoft flex items-center justify-center text-[#7c3aed]"><Sparkles size={20} /></span>
+                <div className="flex-1 min-w-0"><p className="text-[11px] font-bold text-hj-muted uppercase tracking-wide">{t('insight')}</p><p className="text-[13px] font-semibold leading-snug">{t('insightTop', { name: topDebtor.name, amt: formatINR(topDebtor.balance) })}</p></div>
+                <button onClick={() => remindCustomer(topDebtor)} className="press shrink-0 w-10 h-10 rounded-full bg-[#25D366] text-white flex items-center justify-center" aria-label={t('remindNow')}><MessageCircle size={18} /></button>
               </div>
-              <div className="bg-[#0e8a5a] rounded-[12px] p-2 text-center text-white">
-                <p className="text-[9px] font-semibold opacity-80">Outstanding</p>
-                <p className="text-[12px] font-extrabold">{formatINR(Math.abs(selected.balance))}</p>
+            )}
+
+            {/* install */}
+            {installPrompt && (
+              <div className="mx-5 mt-4 flex items-center gap-3 p-4 rounded-3xl bg-hj-brand text-white">
+                <Download size={20} />
+                <div className="flex-1"><p className="text-[14px] font-bold">{t('installTitle')}</p><p className="text-[12px] opacity-80">{t('installSub')}</p></div>
+                <button onClick={async () => { installPrompt.prompt(); await installPrompt.userChoice; setInstallPrompt(null) }} className="press px-4 h-9 rounded-full bg-white text-hj-brand text-[13px] font-bold">{t('install')}</button>
+              </div>
+            )}
+
+            {/* setup checklist */}
+            {checklistProgress < 3 && (
+              <div className="mx-5 mt-4 rounded-3xl bg-hj-card border border-hj-line p-4 shadow-hj">
+                <div className="flex items-center gap-3">
+                  <Ring value={checklistProgress / 3} label={`${checklistProgress}/3`} />
+                  <div className="flex-1"><p className="font-display font-extrabold text-[15px]">{t('setupTitle')}</p>
+                    <div className="flex gap-3 mt-1 text-[12px] font-semibold">
+                      {([['cust', 'stepCustomer'], ['txn', 'stepEntry'], ['backup', 'stepBackup']] as const).map(([k, l]) => (
+                        <span key={k} className={`flex items-center gap-1 ${checklist[k] ? 'text-hj-get' : 'text-hj-muted'}`}>{checklist[k] ? <Check size={13} strokeWidth={3} /> : <span className="w-3 h-3 rounded-full border-2 border-current" />}{t(l)}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={() => !checklist.cust ? setSheet('addCust') : !checklist.txn ? startEntry('give') : navigateTo('backup')} className="press w-10 h-10 rounded-full bg-hj-brandsoft text-hj-brand flex items-center justify-center"><ChevronRight size={20} /></button>
+                </div>
+              </div>
+            )}
+
+            {/* streak + invite */}
+            <div className="grid grid-cols-2 gap-3 mx-5 mt-4">
+              <div className="rounded-3xl p-4 bg-gradient-to-br from-[#fff1d6] to-[#ffe2c2] dark:from-[#3a2a10] dark:to-[#3a1f10]">
+                <span className="w-9 h-9 rounded-full bg-white/70 dark:bg-white/10 flex items-center justify-center text-[#ea580c]"><Flame size={18} /></span>
+                <p className="font-display font-extrabold text-[16px] mt-2">{t('streak', { n: Math.max(streak, 0) })}</p>
+                <p className="text-[11px] text-hj-muted leading-snug">{t('streakSub')}</p>
+              </div>
+              <button onClick={inviteFriends} className="press text-left rounded-3xl p-4 bg-gradient-to-br from-[#e3f8ea] to-[#d2f1de] dark:from-[#10301d] dark:to-[#0c2517]">
+                <span className="w-9 h-9 rounded-full bg-white/70 dark:bg-white/10 flex items-center justify-center text-hj-brand"><Gift size={18} /></span>
+                <p className="font-display font-extrabold text-[16px] mt-2">{t('inviteTitle')}</p>
+                <p className="text-[11px] text-hj-muted leading-snug">{t('inviteSub', { code: referralCode })}</p>
+              </button>
+            </div>
+
+            {/* recent */}
+            <div className="flex justify-between items-center px-5 mt-6 mb-2">
+              <h3 className="font-display text-[17px] font-extrabold">{t('recent')}</h3>
+              {txns.length > 0 && <button onClick={() => goTab('customers')} className="text-[13px] font-bold text-hj-brand">{t('seeAll')}</button>}
+            </div>
+            <div className="mx-5 rounded-3xl bg-hj-card border border-hj-line shadow-hj overflow-hidden">
+              {[...txns].sort((a, b) => txnSortKey(b).localeCompare(txnSortKey(a))).slice(0, 6).map((x, i) => (
+                <button key={x.id} onClick={() => { setSelectedId(x.customerId); setDetailTab('txns'); navigateTo('customer-detail') }} className={`w-full text-left flex items-center gap-3 px-4 py-3 active:bg-hj-card2 ${i ? 'border-t border-hj-line' : ''}`}>
+                  <Avatar initials={x.initials} color={x.color} size={40} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] font-bold truncate">{x.name}</p>
+                    <p className="text-[12px] text-hj-muted truncate">{dayLabel(x.dateISO)}{x.time ? ` • ${x.time}` : ''} • {x.note || x.method}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`font-display text-[15px] font-extrabold tnum ${x.type === 'received' ? 'text-hj-get' : 'text-hj-give'}`}>{x.type === 'received' ? '+' : '−'}{formatINR(x.amount)}</p>
+                    <p className="text-[11px] text-hj-muted">{x.type === 'received' ? t('received') : t('given')}</p>
+                  </div>
+                </button>
+              ))}
+              {txns.length === 0 && <EmptyState art="no-transactions" title={t('noTxns')} sub={t('noTxnsSub')} cta={t('addEntry')} onCta={() => startEntry('give')} />}
+            </div>
+            <p className="text-center text-[12px] italic text-hj-muted mt-6 px-8">🌿 “{t('quote')}” 🌿</p>
+          </div>
+        )}
+
+        {/* ===================== CUSTOMERS ===================== */}
+        {hydrated && view === 'customers' && (
+          <div className="page-enter flex-1 flex flex-col overflow-hidden">
+            <div className="px-5 pt-5 pb-3 bg-hj-bg">
+              <div className="flex items-center justify-between">
+                <div><h2 className="font-display text-[24px] font-extrabold leading-tight">{t('customers')}</h2><p className="text-[12px] text-hj-muted">{t('customersN', { n: customers.length })}</p></div>
+                <button onClick={() => setSheet('sort')} className="press h-10 px-3.5 rounded-full bg-hj-card border border-hj-line shadow-hj flex items-center gap-1.5 text-[13px] font-bold"><ArrowUpDown size={15} />{t('sortBy')}</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5 mt-3">
+                <div className="rounded-2xl bg-hj-getsoft px-3.5 py-2.5"><p className="text-[11px] font-semibold text-hj-muted">{t('youWillGet')}</p><p className="font-display font-extrabold text-[17px] text-hj-get tnum">{formatINR(totalReceive)}</p></div>
+                <div className="rounded-2xl bg-hj-givesoft px-3.5 py-2.5"><p className="text-[11px] font-semibold text-hj-muted">{t('youWillGive')}</p><p className="font-display font-extrabold text-[17px] text-hj-give tnum">{formatINR(totalPay)}</p></div>
+              </div>
+              <div className="mt-3 flex items-center gap-2 rounded-2xl border border-hj-line bg-hj-card px-4 h-12 shadow-hj focus-within:border-hj-brand">
+                <Search size={18} className="text-hj-muted" />
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('searchPh')} className="flex-1 bg-transparent outline-none text-[14px] placeholder:text-hj-muted/70" />
+                {search && <button aria-label={t('clearSearch')} onClick={() => setSearch('')}><X size={16} className="text-hj-muted" /></button>}
+              </div>
+              <div className="flex gap-2 mt-3 overflow-auto scrollbar-hide -mx-5 px-5">
+                {(['All', 'Receivable', 'Payable', 'Overdue'] as Filter[]).map(f => (
+                  <Chip key={f} active={filter === f} onClick={() => setFilter(f)}>{t(f === 'All' ? 'all' : f === 'Receivable' ? 'receivable' : f === 'Payable' ? 'payable' : 'overdue')} <span className="opacity-60 ml-1">{customerCounts[f]}</span></Chip>
+                ))}
               </div>
             </div>
-            <div className={`flex gap-6 px-4 mt-5 border-b text-[11px] font-bold ${dark?'border-white/10':'border-[#e0ece6]'}`}>
-              <button onClick={()=>setDetailTab('txns')} className={`pb-2 border-b-2 ${detailTab==='txns'?'border-[#0e8a5a] text-[#0e8a5a]':'border-transparent '+muted}`}>Transactions</button>
-              <button onClick={()=>setDetailTab('details')} className={`pb-2 border-b-2 ${detailTab==='details'?'border-[#0e8a5a] text-[#0e8a5a]':'border-transparent '+muted}`}>Details</button>
-              <button onClick={()=>setDetailTab('notes')} className={`pb-2 border-b-2 ${detailTab==='notes'?'border-[#0e8a5a] text-[#0e8a5a]':'border-transparent '+muted}`}>Notes</button>
-            </div>
-            {detailTab==='txns' && (
-              <div className="px-4 mt-3 space-y-3">
-                {['Today','Yesterday'].map(group=>{
-                  const list = txns.filter(t=>t.customerId===selected.id && t.dateLabel===group)
+            <div className="flex-1 overflow-auto scrollbar-hide px-5 pb-[120px]">
+              <div className="rounded-3xl bg-hj-card border border-hj-line shadow-hj overflow-hidden empty:hidden">
+                {filtered.map((c, i) => {
+                  const last = lastTxnOf[c.id]
+                  const od = isOverdue(c)
                   return (
-                    <div key={group}>
-                      <p className={`text-[10px] font-bold ${muted} flex items-center gap-1`}><span className="w-1.5 h-1.5 rounded-full bg-[#0e8a5a]" />{group} {list.length?`(${list.length})`:''}</p>
-                      <div className="mt-2 space-y-2">
-                        {list.map(t=>(
-                          <div key={t.id} className={`${card} border rounded-[12px] p-3 flex items-center gap-3`}>
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${t.type==='received'?'bg-emerald-100 text-emerald-600':'bg-red-100 text-red-500'}`}>
-                              {t.type==='received'?<ArrowDownLeft size={14}/>:<ArrowUpRight size={14}/>}
-                            </div>
-                            <div className="flex-1">
-                              <p className={`text-[11px] font-bold ${dark?'text-white':''}`}>{t.type==='received'?'Received':'Given'} {t.note?`• ${t.note}`:''}</p>
-                              <p className="text-[10px] text-[#6b7c77]">{t.method} • {t.time}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className={`text-[11px] font-extrabold ${t.type==='received'?'text-emerald-600':'text-red-500'}`}>{formatINR(t.amount)}</p>
-                              <p className="text-[9px] text-[#6b7c77]">Bal: {formatINR(t.bal)}</p>
-                            </div>
-                          </div>
-                        ))}
-                        {list.length===0 && <p className="text-[10px] text-[#6b7c77] py-1">No transactions</p>}
-                      </div>
+                    <div key={c.id}>
+                      <button onClick={() => { setSelectedId(c.id); setDetailTab('txns'); navigateTo('customer-detail') }} className={`w-full text-left flex items-center gap-3 px-4 py-3.5 active:bg-hj-card2 ${i ? 'border-t border-hj-line' : ''}`}>
+                        <Avatar initials={c.initials} color={c.color} size={44} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[15px] font-bold flex items-center gap-1.5 min-w-0"><span className="truncate">{c.name}</span>{od && <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-hj-goldsoft text-[#b45309] dark:text-hj-gold text-[10px] font-extrabold">{t('overdue')}</span>}</p>
+                          <p className="text-[12px] text-hj-muted truncate">{last ? `${dayLabel(last.dateISO)} • ${last.type === 'received' ? t('received') : t('given')} ${formatINR(last.amount)}` : c.phone}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`font-display text-[16px] font-extrabold tnum ${c.balance > 0 ? 'text-hj-get' : c.balance < 0 ? 'text-hj-give' : 'text-hj-muted'}`}>{formatINR(Math.abs(c.balance))}</p>
+                          <p className="text-[11px] font-semibold text-hj-muted">{c.balance > 0 ? t('youWillGet') : c.balance < 0 ? t('youWillGive') : t('settled')}</p>
+                        </div>
+                      </button>
+                      {i === 2 && filtered.length > 4 && (
+                        <div className="border-t border-hj-line px-4 py-3 flex items-center gap-3 bg-gradient-to-r from-hj-brandsoft to-hj-card">
+                          <Art name="reports" className="w-12 h-12" />
+                          <div className="flex-1"><p className="text-[13px] font-extrabold flex items-center gap-1"><Star size={13} className="text-hj-gold fill-hj-gold" /> {t('proTitle')}</p><p className="text-[12px] text-hj-muted">{t('proSub')}</p></div>
+                          <button onClick={() => showRewardedAd(() => showToast('Pro unlocked!'))} className="press h-9 px-3.5 rounded-full bg-hj-brand text-white text-[12px] font-bold">{t('watchAd')}</button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
-                {txns.filter(t=>t.customerId===selected.id).length===0 && (
-                  <div className="flex flex-col items-center py-6">
-                    <img src="/illustrations/03-no-transactions.png" alt="No Transactions" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                    <p className="text-[11px] font-bold mt-2">No Transactions Yet</p>
-                    <p className="text-[10px] text-[#6b7c77] text-center">Start adding transactions<br/>and keep your hisab organized</p>
-                    <button onClick={()=>navigateTo('add-transaction')} className="mt-3 px-4 py-2 rounded-full bg-[#0e8a5a] text-white text-[10px] font-bold">Add Transaction</button>
-                  </div>
-                )}
               </div>
-            )}
-            {detailTab==='details' && (
-              <div className="px-4 mt-4 space-y-3">
-                <div className={`${card} border rounded-[12px] p-3`}>
-                  <p className="text-[11px] font-bold">Customer Info</p>
-                  <div className="mt-2 space-y-2 text-[11px]">
-                    <div className="flex justify-between"><span className={muted}>Name</span><span className="font-bold">{selected.name}</span></div>
-                    <div className="flex justify-between"><span className={muted}>Phone</span><span className="font-bold">{selected.phone}</span></div>
-                    <div className="flex justify-between"><span className={muted}>Village</span><span className="font-bold">{selected.village||'-'}</span></div>
-                    <div className="flex justify-between"><span className={muted}>Balance</span><span className={`font-bold ${selected.balance>=0?'text-emerald-600':'text-red-500'}`}>{formatINR(selected.balance)}</span></div>
-                  </div>
-                  <button onClick={openEdit} className="mt-3 w-full py-2 rounded-full bg-[#0e8a5a] text-white font-bold text-[11px]">Edit Details</button>
-                  <button onClick={()=>{
-                    if(confirm(`Delete ${selected.name}?`)){ setCustomers(p=>p.filter(c=>c.id!==selectedId)); setTxns(p=>p.filter(t=>t.customerId!==selectedId)); navigateTo('customers'); showToast('Customer deleted')}
-                  }} className="mt-2 w-full py-2 rounded-full border border-red-200 text-red-600 font-bold text-[11px] flex items-center justify-center gap-1"><Trash2 size={12}/> Delete Customer</button>
-                </div>
-              </div>
-            )}
-            {detailTab==='notes' && (
-              <div className="px-4 mt-4">
-                <div className={`${card} border rounded-[12px] p-3`}>
-                  <p className="text-[11px] font-bold">Notes for {selected.name}</p>
-                  <textarea value={notesDraft} onChange={e=>setNotesDraft(e.target.value)} placeholder="Add notes..." className={`mt-2 w-full h-24 rounded-[10px] border p-2 text-[11px] outline-none ${inputBg}`} />
-                  <button onClick={saveNotes} className="mt-2 w-full py-2 rounded-full bg-[#0e8a5a] text-white font-bold text-[11px] flex items-center justify-center gap-1"><Save size={12}/> Save Notes</button>
-                </div>
-              </div>
-            )}
+              {filtered.length === 0 && (customers.length === 0
+                ? <EmptyState art="no-customers" title={t('noCustomers')} sub={t('noCustomersSub')} cta={t('addCustomer')} onCta={() => setSheet('addCust')} />
+                : <EmptyState art="no-results" title={t('noResults')} sub={t('noResultsSub')} cta={t('clearSearch')} onCta={() => { setSearch(''); setFilter('All') }} />)}
+            </div>
+            <button onClick={() => setSheet('addCust')} className="press absolute bottom-[92px] right-5 h-14 pl-4 pr-5 rounded-full bg-hj-brand text-white flex items-center gap-2 font-bold text-[14px] shadow-[0_12px_28px_rgba(11,122,67,.4)]">
+              <Plus size={20} strokeWidth={2.6} /> {t('addCustomer')}
+            </button>
           </div>
         )}
 
-        {/* ===== ADD TRANSACTION ===== */}
-        {view==='add-transaction' && (
+        {/* ===================== CUSTOMER DETAIL ===================== */}
+        {hydrated && view === 'customer-detail' && selected && (
           <div className="page-enter flex-1 flex flex-col overflow-hidden">
-            <div className={`flex items-center gap-3 px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'}`}>
-              <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><ArrowLeft size={16}/></button>
-              <h2 className={`text-[14px] font-bold ${dark?'text-white':''}`}>Add Transaction</h2>
-            </div>
-            <div className="flex-1 overflow-auto scrollbar-hide">
-              <div className={`${card} border mx-3 mt-3 rounded-[12px] p-3 flex items-center gap-3`}>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[11px]" style={{background:selected.color}}>{selected.initials}</div>
-                <div className="flex-1">
-                  <p className={`text-[12px] font-bold ${dark?'text-white':''}`}>{selected.name}</p>
-                  <p className="text-[10px] text-[#6b7c77]">{selected.phone}</p>
-                  <p className="text-[10px] text-[#6b7c77]">Current Due: <span className="font-bold text-[#0e8a5a]">{formatINR(Math.abs(selected.balance))}</span></p>
-                </div>
-                <button onClick={()=>setShowChangeCust(true)} className="text-[11px] font-bold text-[#0e8a5a]">Change</button>
-              </div>
-              <div className="grid grid-cols-2 gap-2 px-3 mt-3">
-                <button onClick={()=>setTxnType('give')} className={`py-2.5 rounded-full font-bold text-[12px] flex items-center justify-center gap-1.5 border ${txnType==='give'?'bg-[#0e8a5a] text-white border-[#0e8a5a]':'bg-white text-[#6b7c77] border-[#e0ece6] dark:bg-white/10 dark:text-white/70 dark:border-white/10'}`}>
-                  <ArrowUpRight size={14}/> Give
-                </button>
-                <button onClick={()=>setTxnType('receive')} className={`py-2.5 rounded-full font-bold text-[12px] flex items-center justify-center gap-1.5 border ${txnType==='receive'?'bg-[#0e8a5a] text-white border-[#0e8a5a]':'bg-white text-[#6b7c77] border-[#e0ece6] dark:bg-white/10 dark:text-white/70 dark:border-white/10'}`}>
-                  <ArrowDownLeft size={14}/> Receive
-                </button>
-              </div>
-              <div className="flex justify-center mt-2">
-                <img src={txnType==='give' ? "/illustrations/04-give.png" : "/illustrations/05-receive.png"} alt={txnType} className="w-28 h-28 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              </div>
-              <div className="px-4 mt-4 flex items-center justify-between">
-                <div className="flex items-baseline gap-1">
-                  <span className={`text-[28px] font-extrabold ${dark?'text-white':''}`}>₹</span>
-                  <span className={`text-[28px] font-extrabold ${amount?'':'opacity-30'} ${dark?'text-white':''}`}>{amount||'0'}</span>
-                </div>
-                <button onClick={()=>showToast('Calculator coming soon')} className={`w-8 h-8 rounded border flex items-center justify-center ${dark?'border-white/10':'border-[#e0ece6] bg-white'}`}><Grid3X3 size={14} className={muted}/></button>
-              </div>
-              {amount && <p className="px-4 text-[10px] text-[#6b7c77]">New balance: <span className="font-bold text-[#0e8a5a]">{formatINR(txnType==='give'? selected.balance+Number(amount||0) : selected.balance-Number(amount||0))}</span> {txnType==='give'?'(you gave)':'(you received)'}</p>}
-              <div className="grid grid-cols-3 gap-2 px-3 mt-3">
-                {['1','2','3','4','5','6','7','8','9','.','0','del'].map(k=>(
-                  <button key={k} onClick={()=>handleKey(k)} className={`${dark?'bg-white/10 text-white border-white/10':'bg-white border-[#e0ece6]'} border rounded-[10px] py-3 font-bold text-[16px] flex items-center justify-center active:bg-[#0e8a5a] active:text-white`}>
-                    {k==='del'? <X size={16}/>: k}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-5 gap-1.5 px-3 mt-4">
-                {[
-                  {label:'Cash', icon:Wallet},
-                  {label:'UPI', icon:Smartphone},
-                  {label:'Bank', icon:Landmark},
-                  {label:'Card', icon:CreditCard},
-                  {label:'Other', icon:MoreHorizontal},
-                ].map(m=>(
-                  <button key={m.label} onClick={()=>setMethod(m.label)} className={`flex flex-col items-center gap-1 py-2 rounded-[10px] border text-[10px] font-bold ${method===m.label? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800' : dark?'bg-white/5 border-white/10 text-white/70':'bg-white border-[#e0ece6] text-[#6b7c77]'}`}>
-                    <m.icon size={16} />{m.label}
-                  </button>
-                ))}
-              </div>
-              <div className="px-3 mt-3 space-y-2">
-                <div className={`flex items-center gap-2 rounded-[10px] border px-3 py-2.5 ${inputBg}`}>
-                  <StickyNote size={14} className={muted}/>
-                  <input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Description (Optional)" className="flex-1 bg-transparent outline-none text-[11px]" />
-                </div>
-                <label className={`flex items-center gap-2 rounded-[10px] border px-3 py-2.5 ${inputBg}`}>
-                  <Calendar size={14} className={muted}/>
-                  <span className="flex-1 text-[11px] font-medium">Date</span>
-                  <input type="date" value={txnDateISO} onChange={e=>{setTxnDateISO(e.target.value); const d=new Date(e.target.value); setTxnDate(d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}))}} className="bg-transparent outline-none text-[11px] font-bold" />
-                </label>
-              </div>
-              <div className="p-3">
-                <button onClick={saveTxn} disabled={!amount} className="w-full bg-[#0e8a5a] disabled:opacity-40 text-white rounded-full py-3 font-bold text-[13px] shadow-md">Save Transaction</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ===== RECEIPT ===== */}
-        {view==='receipt' && (
-          <div className="flex-1 overflow-auto scrollbar-hide bg-[#f2f7f4] dark:bg-[#0b1411]">
-            <div className={`flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10 text-white':'bg-white border-[#e0ece6]'}`}>
-              <button onClick={()=>goBack()} className={`flex items-center gap-2 text-[14px] font-bold`}><ArrowLeft size={16}/> Receipt</button>
-              <button onClick={shareReceiptViaWhatsApp} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><Share2 size={14}/></button>
-            </div>
-            <div className="p-4">
-              <div className={`rounded-[16px] border p-5 ${dark?'bg-[#18251f] border-white/10':'bg-white border-[#e0ece6]'} shadow-sm`}>
-                <div className="flex flex-col items-center">
-                  <img src="/hisabjod-logo-original.png" alt="HisabJod" className="w-16 h-16 object-contain rounded-[12px] bg-white p-1 border border-[#e0ece6]" />
-                  <h3 className={`text-[14px] font-extrabold mt-2 ${dark?'text-white':''}`}>HisabJod</h3>
-                  <p className="text-[10px] text-[#6b7c77]">Digital Khata</p>
-                  <p className={`mt-2 text-[11px] font-extrabold tracking-widest ${dark?'text-white':''}`}>TRANSACTION RECEIPT</p>
-                  <div className="w-full h-px border-t border-dashed border-[#cfe3d9] my-3" />
-                </div>
-                {(() => {
-                  const t = lastTxn || txns[0]; if(!t) return <p className="text-center text-[11px] text-[#6b7c77]">No transaction</p>
-                  const prevBal = t.bal + (t.type==='given'? -t.amount : t.amount)
-                  const rows:[string,string][] = [
-                    ['Customer', t.name],
-                    ['Date', txnDate+' , 10:30 AM'],
-                    ['Transaction ID','TXN00'+t.id.slice(-3)],
-                    ['Type', t.type==='received'?'Received':'Given'],
-                    ['Amount', formatINR(t.amount)],
-                    ['Payment Method', t.method],
-                    ['Previous Balance', formatINR(prevBal)],
-                    ['Remaining Balance', formatINR(t.bal)],
-                  ]
-                  return (
-                    <div className="space-y-2.5">
-                      {rows.map(([k,v])=>(
-                        <div key={k} className="flex justify-between text-[11px]">
-                          <span className="text-[#6b7c77]">{k}</span>
-                          <span className={`font-bold ${k==='Type' ? (t.type==='received'?'text-emerald-600':'text-red-500') : dark?'text-white':'text-[#14201c]'} ${k==='Type'?'px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-[10px]':''}`}>{v}</span>
-                        </div>
-                      ))}
+            <Header title={selected.name} sub={selected.phone !== '-' ? selected.phone : undefined} onBack={goBack}
+              right={<div className="flex gap-2"><IconBtn label={t('edit')} onClick={openEdit}><Pencil size={16} /></IconBtn><IconBtn label={t('whatsapp')} tone="wa" onClick={shareKhataViaWhatsApp}><Share2 size={16} /></IconBtn></div>} />
+            <div className="flex-1 overflow-auto scrollbar-hide pb-[110px]">
+              {/* balance card */}
+              <div className="px-5 pt-4">
+                <div className={`relative overflow-hidden rounded-[28px] p-5 ${selected.balance > 0 ? 'bg-hj-getsoft' : selected.balance < 0 ? 'bg-hj-givesoft' : 'bg-hj-card2'}`}>
+                  <Art name="ledger" className="absolute right-2 top-2 w-[88px] opacity-90" />
+                  <div className="flex items-center gap-3 relative pr-20">
+                    <Avatar initials={selected.initials} color={selected.color} size={52} />
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-semibold text-hj-muted">{selected.balance > 0 ? t('youWillGet') : selected.balance < 0 ? t('youWillGive') : t('settled')}</p>
+                      <p className={`font-display text-[30px] font-extrabold tnum leading-tight ${selected.balance > 0 ? 'text-hj-get' : selected.balance < 0 ? 'text-hj-give' : 'text-hj-muted'}`}>{formatINR(Math.abs(selected.balance))}</p>
                     </div>
-                  )
-                })()}
-                <div className="flex flex-col items-center mt-6">
-                  <Leaf size={22} className="text-[#0e8a5a]" />
-                  <p className={`text-[12px] font-bold mt-1 ${dark?'text-white':''}`}>Thank you!</p>
-                  <p className="text-[10px] text-[#0e8a5a] font-semibold">आपल्या विश्वासाबद्दल धन्यवाद!</p>
+                  </div>
+                  {selected.village && <p className="relative text-[12px] text-hj-muted flex items-center gap-1 mt-2"><MapPin size={12} />{selected.village}</p>}
+                  <div className="relative flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-black/5 dark:border-white/10 text-[12px]">
+                    <span><span className="text-hj-muted">{t('totalGiven')} </span><b className="text-hj-give tnum">{formatINR(selected.totalGiven)}</b></span>
+                    <span><span className="text-hj-muted">{t('totalReceived')} </span><b className="text-hj-get tnum">{formatINR(selected.totalReceived)}</b></span>
+                  </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2 mt-3">
-                <button onClick={shareReceiptViaWhatsApp} className="py-3 rounded-full border bg-white dark:bg-white/10 dark:text-white dark:border-white/10 font-bold text-[12px] flex items-center justify-center gap-1.5 border-[#0e8a5a] text-[#0e8a5a]"><Share2 size={14}/> Share on WhatsApp</button>
-                <button onClick={makePdf} className="py-3 rounded-full bg-[#0e8a5a] text-white font-bold text-[12px] flex items-center justify-center gap-1.5"><Download size={14}/> Save PDF</button>
+              {/* action row */}
+              <div className="grid grid-cols-4 gap-2 px-5 mt-4">
+                {[
+                  { label: t('call'), icon: Phone, cls: 'bg-hj-bluesoft text-[#2563eb]', act: () => { if (selected.phone !== '-') window.open('tel:' + selected.phone.replace(/\s/g, '')) } },
+                  { label: t('remind'), icon: MessageCircle, cls: 'bg-[#25D366]/15 text-[#128c4a]', act: () => remindCustomer(selected) },
+                  { label: t('statement'), icon: FileText, cls: 'bg-hj-purplesoft text-[#7c3aed]', act: shareStatement },
+                  { label: t('reminders'), icon: Bell, cls: 'bg-hj-goldsoft text-[#d97706]', act: () => openAddReminder(selected) },
+                ].map(b => (
+                  <button key={b.label} onClick={b.act} className="press flex flex-col items-center gap-1.5 py-1">
+                    <span className={`w-12 h-12 rounded-2xl flex items-center justify-center ${b.cls}`}><b.icon size={20} /></span>
+                    <span className="text-[11px] font-bold text-hj-ink2">{b.label}</span>
+                  </button>
+                ))}
               </div>
-              <p className="text-[9px] text-center text-[#6b7c77] mt-2">Free: uses Web Share API + `wa.me` — no backend, no cost. On phone pick WhatsApp from share sheet to send PDF.</p>
-            </div>
-          </div>
-        )}
+              {/* tabs */}
+              <div className="px-5 mt-5"><Segmented value={detailTab} onChange={setDetailTab} options={[{ v: 'txns', label: t('ledger') }, { v: 'details', label: t('details') }, { v: 'notes', label: t('notes') }]} /></div>
 
-        {/* ===== REPORTS ===== */}
-        {view==='reports' && (()=> {
-          const monthLabel = new Date(reportMonth+'-01').toLocaleDateString('en-IN',{month:'long', year:'numeric'})
-          const monthTxns = txns.filter(t=> t.dateISO.startsWith(reportMonth))
-          const monthGiven = monthTxns.filter(t=>t.type==='given').reduce((s,t)=>s+t.amount,0)
-          const monthReceived = monthTxns.filter(t=>t.type==='received').reduce((s,t)=>s+t.amount,0)
-          const buckets = Array.from({length:6},(_,bi)=>{
-            const start=bi*5+1, end=bi===5?31: (bi+1)*5
-            const inBucket=monthTxns.filter(t=>{
-              const d=new Date(t.dateISO).getDate()
-              return d>=start && d<=end
-            })
-            return {
-              label: bi===5? `${start}-31` : `${start}-${end}`,
-              given: inBucket.filter(t=>t.type==='given').reduce((s,t)=>s+t.amount,0),
-              received: inBucket.filter(t=>t.type==='received').reduce((s,t)=>s+t.amount,0),
-            }
-          })
-          const maxBucket = Math.max(1, ...buckets.map(b=> Math.max(b.given,b.received)))
-          return (
-          <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-20">
-            <div className={`sticky top-0 z-10 px-4 py-3 border-b flex items-center justify-between ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
-              <img src="/illustrations/02-analytics.png" alt="" className="absolute -top-1 -right-2 w-16 h-16 opacity-[0.06] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <h2 className={`text-[14px] font-extrabold ${dark?'text-white':''} relative`}>Reports</h2>
-              <div className="flex items-center gap-2 relative">
-                <button onClick={shareReportViaWhatsApp} className="w-8 h-8 rounded-full bg-[#25D366] text-white flex items-center justify-center" title="Share Report on WhatsApp"><Share2 size={14}/></button>
-                <button onClick={()=>setShowMonthPicker(true)} className={`px-2 py-1 rounded-full border text-[10px] font-bold flex items-center gap-1 ${dark?'bg-white/10 border-white/10 text-white':'bg-[#f2f7f4] border-[#e0ece6]'}`}>{monthLabel} <ChevronDown size={12}/></button>
-              </div>
-            </div>
-            <div className="px-4 pt-3">
-              <div className="grid grid-cols-3 gap-2">
-                <div className={`${card} border rounded-[12px] p-2 text-center`}>
-                  <p className="text-[9px] font-semibold text-[#6b7c77]">Given ({monthLabel.split(' ')[0]})</p>
-                  <p className="text-[13px] font-extrabold text-[#3b82f6]">{formatINR(monthGiven)}</p>
-                  <p className="text-[8px] text-[#6b7c77]">{monthTxns.filter(t=>t.type==='given').length} txns</p>
-                </div>
-                <div className={`${card} border rounded-[12px] p-2 text-center`}>
-                  <p className="text-[9px] font-semibold text-[#6b7c77]">Received ({monthLabel.split(' ')[0]})</p>
-                  <p className="text-[13px] font-extrabold text-emerald-600">{formatINR(monthReceived)}</p>
-                  <p className="text-[8px] text-[#6b7c77]">{monthTxns.filter(t=>t.type==='received').length} txns</p>
-                </div>
-                <div className={`${card} border rounded-[12px] p-2 text-center`}>
-                  <p className="text-[9px] font-semibold text-[#6b7c77]">Outstanding</p>
-                  <p className="text-[13px] font-extrabold text-orange-600">{formatINR(outstandingAll)}</p>
-                  <p className="text-[8px] text-[#6b7c77]">All time</p>
-                </div>
-              </div>
-              <div className={`${card} border rounded-[14px] p-3 mt-3`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3 text-[9px] font-bold">
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"/> Given</span>
-                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400"/> Received</span>
-                  </div>
-                  <span className="text-[9px] text-[#6b7c77]">{monthLabel} • {monthTxns.length} txns</span>
-                </div>
-                {monthTxns.length===0 ? (
-                  <div className="flex flex-col items-center py-6">
-                    <img src="/illustrations/07-grow-business.png" alt="Grow Business" className="w-40 h-40 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                    <p className="text-[11px] font-bold mt-2">No data for {monthLabel}</p>
-                    <p className="text-[10px] text-[#6b7c77]">View detailed reports and grow your business</p>
-                  </div>
-                ) : (
-                <div className="flex items-end gap-1 h-24 mt-3">
-                  {buckets.map((b,i)=>(
-                    <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                      <div className="w-full flex gap-0.5 justify-center items-end h-20">
-                        <div className="flex-1 bg-emerald-500 rounded-t transition-all" style={{height: `${Math.max(4, (b.given/maxBucket)*72)}px`}} title={`Given ${formatINR(b.given)}`} />
-                        <div className="flex-1 bg-red-400 rounded-t transition-all" style={{height: `${Math.max(4, (b.received/maxBucket)*72)}px`}} title={`Received ${formatINR(b.received)}`} />
+              {detailTab === 'txns' && (
+                <div className="px-5 mt-4">
+                  {ledger.length === 0 && <EmptyState art="no-transactions" title={t('noTxns')} sub={t('noTxnsSub')} />}
+                  {Object.entries(ledger.reduce<Record<string, { t: Txn; run: number }[]>>((g, r) => { (g[r.t.dateISO] ||= []).push(r); return g }, {})).map(([iso, list]) => (
+                    <div key={iso} className="mb-4">
+                      <p className="text-[12px] font-bold text-hj-muted mb-2 flex items-center gap-2"><Calendar size={12} />{dayLabel(iso)}</p>
+                      <div className="rounded-3xl bg-hj-card border border-hj-line shadow-hj overflow-hidden">
+                        {list.map(({ t: x, run }, i) => (
+                          <button key={x.id} onClick={() => { setActionTxn(x); setSheet('txnActions') }} className={`w-full text-left flex items-center gap-3 px-4 py-3 active:bg-hj-card2 ${i ? 'border-t border-hj-line' : ''}`}>
+                            <span className={`w-10 h-10 rounded-2xl flex items-center justify-center ${x.type === 'received' ? 'bg-hj-getsoft text-hj-get' : 'bg-hj-givesoft text-hj-give'}`}>{x.type === 'received' ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[14px] font-bold truncate">{x.type === 'received' ? t('youGot') : t('youGave')}{x.note ? <span className="font-medium text-hj-muted"> • {x.note}</span> : null}</p>
+                              <p className="text-[12px] text-hj-muted">{x.method}{x.time ? ` • ${x.time}` : ''} • {t('bal')} <span className="tnum">{formatINR(run)}</span></p>
+                            </div>
+                            <p className={`font-display text-[16px] font-extrabold tnum ${x.type === 'received' ? 'text-hj-get' : 'text-hj-give'}`}>{formatINR(x.amount)}</p>
+                          </button>
+                        ))}
                       </div>
-                      <span className="text-[7px] text-[#6b7c77] font-medium">{b.label}</span>
                     </div>
                   ))}
                 </div>
+              )}
+              {detailTab === 'details' && (
+                <div className="px-5 mt-4 space-y-3">
+                  <div className="rounded-3xl bg-hj-card border border-hj-line shadow-hj p-4 space-y-3 text-[14px]">
+                    {([[t('name'), selected.name], [t('phone'), selected.phone], [t('village'), selected.village || '—'], [t('balance'), formatINR(selected.balance)], [t('entries'), String(ledger.length)]] as [string, string][]).map(([k, v]) => (
+                      <div key={k} className="flex justify-between gap-4"><span className="text-hj-muted">{k}</span><span className="font-bold text-right">{v}</span></div>
+                    ))}
+                  </div>
+                  <PrimaryBtn tone="ghost" onClick={openEdit}><Pencil size={16} /> {t('editCustomer')}</PrimaryBtn>
+                  <PrimaryBtn tone="danger" onClick={askDeleteCustomer}><Trash2 size={16} /> {t('deleteCustomer')}</PrimaryBtn>
+                </div>
+              )}
+              {detailTab === 'notes' && (
+                <div className="px-5 mt-4 space-y-3">
+                  <textarea value={notesDraft} onChange={e => setNotesDraft(e.target.value)} placeholder={t('notesPh')} className="w-full h-40 rounded-3xl border border-hj-line bg-hj-card p-4 text-[14px] outline-none focus:border-hj-brand shadow-hj placeholder:text-hj-muted/70" />
+                  <PrimaryBtn onClick={saveNotes}><Check size={18} /> {t('saveNotes')}</PrimaryBtn>
+                </div>
+              )}
+            </div>
+            {/* sticky give/got bar */}
+            <div className="absolute bottom-0 inset-x-0 px-5 pt-3 pb-5 bg-gradient-to-t from-hj-bg via-hj-bg to-transparent grid grid-cols-2 gap-3">
+              <PrimaryBtn tone="give" onClick={() => startEntry('give', selected.id)}><ArrowUpRight size={18} /> {t('youGave')} ₹</PrimaryBtn>
+              <PrimaryBtn tone="get" onClick={() => startEntry('receive', selected.id)}><ArrowDownLeft size={18} /> {t('youGot')} ₹</PrimaryBtn>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== ADD TRANSACTION ===================== */}
+        {hydrated && view === 'add-transaction' && selected && (() => {
+          const give = txnType === 'give'
+          const v = Number.isFinite(amountVal) ? amountVal : 0
+          const nb = give ? selected.balance + v : selected.balance - v
+          return (
+            <div className="page-enter flex-1 flex flex-col overflow-hidden">
+              <Header title={t('newEntry')} onBack={goBack} />
+              <div className="flex-1 overflow-auto scrollbar-hide px-5 pt-3">
+                <button onClick={() => setSheet('changeCust')} className="press w-full flex items-center gap-3 rounded-2xl bg-hj-card border border-hj-line p-3 shadow-hj text-left">
+                  <Avatar initials={selected.initials} color={selected.color} size={40} />
+                  <div className="flex-1 min-w-0"><p className="text-[14px] font-bold truncate">{selected.name}</p><p className="text-[12px] text-hj-muted">{t('currentBal')}: <b className={selected.balance >= 0 ? 'text-hj-get' : 'text-hj-give'}>{formatINR(selected.balance)}</b></p></div>
+                  <span className="text-[13px] font-bold text-hj-brand flex items-center">{t('change')}<ChevronDown size={14} /></span>
+                </button>
+                <div className="grid grid-cols-2 gap-2 mt-3 p-1 rounded-2xl bg-hj-card2 border border-hj-line">
+                  <button onClick={() => setTxnType('give')} className={`press h-11 rounded-xl font-bold text-[14px] flex items-center justify-center gap-1.5 transition ${give ? 'bg-hj-give text-white shadow' : 'text-hj-muted'}`}><ArrowUpRight size={16} /> {t('youGave')}</button>
+                  <button onClick={() => setTxnType('receive')} className={`press h-11 rounded-xl font-bold text-[14px] flex items-center justify-center gap-1.5 transition ${!give ? 'bg-hj-get text-white shadow' : 'text-hj-muted'}`}><ArrowDownLeft size={16} /> {t('youGot')}</button>
+                </div>
+                <div className={`mt-3 rounded-3xl px-5 py-4 flex items-center gap-3 ${give ? 'bg-hj-givesoft' : 'bg-hj-getsoft'}`}>
+                  <Art name={give ? 'give' : 'receive'} className="w-16 h-16 shrink-0" />
+                  <div className="flex-1 min-w-0 text-right">
+                    <p className={`font-display font-extrabold tnum leading-none truncate ${give ? 'text-hj-give' : 'text-hj-get'} ${expr.length > 12 ? 'text-[26px]' : 'text-[40px]'}`}>
+                      <span className="text-[0.7em] align-top mr-0.5">₹</span>{expr ? expr.replace(/-/g, '−') : <span className="opacity-30">0</span>}
+                    </p>
+                    <p className="text-[12px] text-hj-muted mt-1.5 truncate">{hasOp && Number.isFinite(amountVal) ? <b className="text-hj-ink">= {formatINR(amountVal)} • </b> : null}{t('newBal')}: <b className={nb >= 0 ? 'text-hj-get' : 'text-hj-give'}>{formatINR(nb)}</b></p>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3 overflow-auto scrollbar-hide">
+                  {[100, 500, 1000, 2000, 5000].map(n => <button key={n} onClick={() => quickAdd(n)} className="press shrink-0 h-8 px-3 rounded-full bg-hj-card border border-hj-line text-[12px] font-bold text-hj-ink2">+{compactINR(n)}</button>)}
+                </div>
+                <div className="flex gap-2 mt-3 overflow-auto scrollbar-hide">
+                  {METHODS.map(m => (
+                    <button key={m.v} onClick={() => setMethod(m.v)} className={`press shrink-0 h-10 px-3.5 rounded-xl border text-[13px] font-bold flex items-center gap-1.5 ${method === m.v ? 'bg-hj-brandsoft border-hj-brand text-hj-brand' : 'bg-hj-card border-hj-line text-hj-muted'}`}><m.icon size={15} />{t(m.k)}</button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-[1fr_auto] gap-2 mt-3">
+                  <div className="min-w-0 flex items-center gap-2 rounded-xl border border-hj-line bg-hj-card px-3 h-11 focus-within:border-hj-brand">
+                    <StickyNote size={15} className="text-hj-muted" />
+                    <input value={desc} onChange={e => setDesc(e.target.value)} placeholder={t('notePh')} className="flex-1 min-w-0 bg-transparent outline-none text-[13px] placeholder:text-hj-muted/70" />
+                  </div>
+                  <label className="relative flex items-center gap-1.5 rounded-xl border border-hj-line bg-hj-card px-3 h-11 text-[13px] font-bold cursor-pointer">
+                    <Calendar size={15} className="text-hj-brand" />
+                    <span>{txnDateISO === todayISO ? t('today') : shortDate(txnDateISO)}</span>
+                    <input type="date" aria-label={t('date')} value={txnDateISO} max={localISO()} onChange={e => e.target.value && setTxnDateISO(e.target.value)} onClick={e => { try { (e.target as any).showPicker?.() } catch { } }} className="absolute inset-0 opacity-0 cursor-pointer" />
+                  </label>
+                </div>
+              </div>
+              <div className="px-3 pt-3 pb-4 bg-hj-card2 border-t border-hj-line rounded-t-[28px] mt-2">
+                <div className="grid grid-cols-4 gap-2">
+                  {['7', '8', '9', '÷', '4', '5', '6', '×', '1', '2', '3', '-', '.', '0', 'del', '+'].map(k => {
+                    const op = ['÷', '×', '-', '+'].includes(k)
+                    return (
+                      <button key={k} onClick={() => handleKey(k)} onContextMenu={e => { if (k === 'del') { e.preventDefault(); handleKey('C') } }}
+                        className={`press h-[50px] rounded-2xl font-display text-[21px] font-bold flex items-center justify-center ${op ? 'bg-hj-brandsoft text-hj-brand' : 'bg-hj-card text-hj-ink shadow-hj'}`}>
+                        {k === 'del' ? <Delete size={20} /> : k === '-' ? '−' : k}
+                      </button>
+                    )
+                  })}
+                </div>
+                <PrimaryBtn className="mt-3" tone={give ? 'give' : 'get'} disabled={!(amountVal > 0)} onClick={saveTxn}>
+                  <Check size={18} strokeWidth={3} /> {t('saveEntry')}{amountVal > 0 ? ` • ${formatINR(amountVal)}` : ''}
+                </PrimaryBtn>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ===================== SUCCESS ===================== */}
+        {hydrated && view === 'success' && lastTxn && (
+          <div className="page-enter flex-1 flex flex-col px-6 pt-10 pb-7 bg-gradient-to-b from-hj-getsoft to-hj-bg relative overflow-hidden">
+            <div className="confetti absolute left-1/2 top-[190px] pointer-events-none">
+              {Array.from({ length: 22 }).map((_, i) => {
+                const a = (i / 22) * Math.PI * 2, r = 110 + (i % 4) * 30
+                return <i key={i} style={{ background: ['#0b7a43', '#f5a524', '#e5484d', '#2563eb', '#12a150'][i % 5], ['--dx' as any]: `${Math.cos(a) * r}px`, ['--dy' as any]: `${Math.sin(a) * r}px`, animationDelay: `${(i % 5) * 40}ms` }} />
+              })}
+            </div>
+            <div className="flex-1 flex flex-col items-center justify-center text-center">
+              <Art name="saved" className="w-48 h-48 pop-enter dark:bg-[#eef6f0] dark:rounded-full" />
+              <h2 className="font-display text-[26px] font-extrabold mt-2">{t('saved')}</h2>
+              <p className={`font-display text-[36px] font-extrabold tnum mt-1 ${lastTxn.type === 'received' ? 'text-hj-get' : 'text-hj-give'}`}>{formatINR(lastTxn.amount)}</p>
+              <p className="text-[14px] text-hj-muted">{lang === 'English' ? `${lastTxn.type === 'received' ? t('receivedFrom') : t('addedTo')} ${lastTxn.name}` : `${lastTxn.name} — ${lastTxn.type === 'received' ? t('receivedFrom') : t('addedTo')}`}</p>
+              <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-hj-card border border-hj-line px-4 h-9 text-[13px] shadow-hj">
+                <span className="text-hj-muted">{t('newBal')}</span><b className={`tnum ${lastTxn.bal >= 0 ? 'text-hj-get' : 'text-hj-give'}`}>{formatINR(lastTxn.bal)}</b>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <button onClick={() => shareReceipt(lastTxn)} className="press h-12 rounded-2xl bg-[#25D366] text-white font-bold text-[14px] flex items-center justify-center gap-2"><MessageCircle size={17} /> {t('whatsapp')}</button>
+              <button onClick={() => navigateTo('receipt')} className="press h-12 rounded-2xl bg-hj-card border border-hj-line font-bold text-[14px] flex items-center justify-center gap-2"><ReceiptIcon size={17} /> {t('viewReceipt')}</button>
+            </div>
+            <PrimaryBtn onClick={() => { setExpr(''); setDesc(''); replaceView('add-transaction') }}><Plus size={18} /> {t('addAnother')}</PrimaryBtn>
+            <PrimaryBtn tone="ghost" className="mt-3" onClick={() => { setSelectedId(lastTxn.customerId); setDetailTab('txns'); setViewHistory(['home']); setView('customer-detail') }}>{t('viewCustomer')}</PrimaryBtn>
+          </div>
+        )}
+
+        {/* ===================== RECEIPT ===================== */}
+        {hydrated && view === 'receipt' && (() => {
+          const x = lastTxn || txns[0]
+          if (!x) return null
+          const prev = x.bal - effect(x)
+          return (
+            <div className="page-enter flex-1 flex flex-col overflow-hidden">
+              <Header title={t('receipt')} onBack={goBack} right={<IconBtn label={t('shareWhatsApp')} tone="wa" onClick={() => shareReceipt(x)}><Share2 size={16} /></IconBtn>} />
+              <div className="flex-1 overflow-auto scrollbar-hide p-5">
+                <div className="relative rounded-[28px] bg-hj-card shadow-hjlg overflow-hidden">
+                  <div className="bg-[radial-gradient(120%_120%_at_0%_0%,#14a05a,#0b7a43_50%,#064d2a)] text-white px-5 pt-5 pb-6 text-center">
+                    <p className="font-display font-extrabold text-[18px]">Hisab<span className="text-[#fbbf24]">Jod</span></p>
+                    <p className="text-[11px] tracking-[.2em] font-bold text-white/70 mt-0.5 uppercase">{t('txnReceipt')}</p>
+                    <p className="font-display text-[36px] font-extrabold tnum mt-3">{formatINR(x.amount)}</p>
+                    <span className={`inline-block mt-1 px-3 py-1 rounded-full text-[12px] font-bold ${x.type === 'received' ? 'bg-[#4ade80]/25' : 'bg-[#fca5a5]/25'}`}>{x.type === 'received' ? t('youGot') : t('youGave')}</span>
+                  </div>
+                  <div className="px-5 py-4 space-y-3 text-[14px]">
+                    {([[t('customer'), x.name], [t('date'), `${prettyDate(x.dateISO)}${x.time ? ', ' + x.time : ''}`], [t('txnId'), 'HJ-' + x.id.replace(/\D/g, '').slice(-8)], [t('method'), x.method], ...(x.note ? [[t('notes'), x.note]] : []), [t('prevBal'), formatINR(prev)], [t('remBal'), formatINR(x.bal)]] as [string, string][]).map(([k, v]) => (
+                      <div key={k} className="flex justify-between gap-4"><span className="text-hj-muted">{k}</span><span className="font-bold text-right tnum">{v}</span></div>
+                    ))}
+                  </div>
+                  <div className="mx-5 border-t-2 border-dashed border-hj-line" />
+                  <div className="px-5 py-4 text-center">
+                    <p className="text-[13px] font-bold text-hj-brand">🌿 {t('thankYou')}</p>
+                    <p className="text-[11px] text-hj-muted mt-0.5">{bizName}{bizPhone ? ` • ${bizPhone}` : ''}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 px-5 pb-6">
+                <button onClick={() => shareReceipt(x)} className="press h-[52px] rounded-2xl bg-[#25D366] text-white font-bold text-[14px] flex items-center justify-center gap-2"><MessageCircle size={17} /> {t('whatsapp')}</button>
+                <PrimaryBtn onClick={() => saveReceiptPdf(x)}><Download size={17} /> {t('savePdf')}</PrimaryBtn>
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* ===================== REPORTS ===================== */}
+        {hydrated && view === 'reports' && (() => {
+          const monthLabel = monthLabelOf(reportMonth)
+          const monthTxns = txns.filter(x => x.dateISO.startsWith(reportMonth))
+          const mg = monthTxns.filter(x => x.type === 'given').reduce((s, x) => s + x.amount, 0)
+          const mr = monthTxns.filter(x => x.type === 'received').reduce((s, x) => s + x.amount, 0)
+          const buckets = Array.from({ length: 6 }, (_, bi) => {
+            const start = bi * 5 + 1, end = bi === 5 ? 31 : (bi + 1) * 5
+            const inB = monthTxns.filter(x => { const d = Number(x.dateISO.slice(8, 10)); return d >= start && d <= end })
+            return { label: `${start}–${end === 31 ? '31' : end}`, given: inB.filter(x => x.type === 'given').reduce((s, x) => s + x.amount, 0), received: inB.filter(x => x.type === 'received').reduce((s, x) => s + x.amount, 0) }
+          })
+          const maxB = Math.max(1, ...buckets.map(b => Math.max(b.given, b.received)))
+          const rate = mg > 0 ? Math.min(1, mr / mg) : mr > 0 ? 1 : 0
+          const modes = METHODS.map(m => ({ ...m, amt: monthTxns.filter(x => x.method === m.v).reduce((s, x) => s + x.amount, 0) })).filter(m => m.amt > 0)
+          const modeMax = Math.max(1, ...modes.map(m => m.amt))
+          const topDue = [...customers].filter(c => c.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, 3)
+          return (
+            <div className={`page-enter flex-1 overflow-auto scrollbar-hide ${navPad}`}>
+              <div className="px-5 pt-5 flex items-center justify-between">
+                <h2 className="font-display text-[24px] font-extrabold">{t('reports')}</h2>
+                <div className="flex gap-2">
+                  <button onClick={() => setSheet('month')} className="press h-10 px-3.5 rounded-full bg-hj-card border border-hj-line shadow-hj text-[13px] font-bold flex items-center gap-1">{monthLabel}<ChevronDown size={15} /></button>
+                  <IconBtn label={t('shareReport')} tone="wa" onClick={() => shareTextViaWhatsApp('', `*${bizName} — ${monthLabel}*\nReceived: ${formatINR(mr)}\nGiven: ${formatINR(mg)}\nTo receive (all): ${formatINR(totalReceive)}\nTo pay (all): ${formatINR(totalPay)}\nCustomers: ${customers.length}\n\nSent via HisabJod`)}><Share2 size={16} /></IconBtn>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-2.5 px-5 mt-4">
+                {[
+                  { l: t('monthReceived'), v: mr, c: 'text-hj-get', bg: 'bg-hj-getsoft', n: monthTxns.filter(x => x.type === 'received').length },
+                  { l: t('monthGiven'), v: mg, c: 'text-hj-give', bg: 'bg-hj-givesoft', n: monthTxns.filter(x => x.type === 'given').length },
+                  { l: t('outstanding'), v: totalReceive, c: 'text-[#b45309] dark:text-hj-gold', bg: 'bg-hj-goldsoft', n: -1 },
+                ].map(k => (
+                  <div key={k.l} className={`rounded-3xl ${k.bg} p-3`}>
+                    <p className="text-[11px] font-semibold text-hj-muted truncate">{k.l}</p>
+                    <p className={`font-display text-[16px] font-extrabold tnum mt-0.5 ${k.c}`}>{compactINR(k.v)}</p>
+                    <p className="text-[10px] text-hj-muted">{k.n >= 0 ? t('txnsN', { n: k.n }) : t('allTime')}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mx-5 mt-4 rounded-3xl bg-hj-card border border-hj-line shadow-hj p-4">
+                <div className="flex items-center justify-between">
+                  <p className="font-display font-extrabold text-[15px]">{t('cashflow')}</p>
+                  <div className="flex items-center gap-3 text-[11px] font-bold text-hj-muted">
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-hj-get" />{t('received')}</span>
+                    <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-hj-give" />{t('given')}</span>
+                  </div>
+                </div>
+                {monthTxns.length === 0 ? (
+                  <EmptyState art="grow" title={t('noDataMonth', { m: monthLabel })} sub={t('noDataSub')} />
+                ) : (
+                  <div className="flex items-end gap-2 h-40 mt-4">
+                    {buckets.map((b, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
+                        <div className="w-full flex gap-1 justify-center items-end h-32">
+                          <div className="w-1/2 max-w-[16px] rounded-t-md bg-hj-get transition-all" style={{ height: `${b.received ? Math.max(6, (b.received / maxB) * 128) : 3}px`, opacity: b.received ? 1 : .25 }} title={`${t('received')} ${formatINR(b.received)}`} />
+                          <div className="w-1/2 max-w-[16px] rounded-t-md bg-hj-give transition-all" style={{ height: `${b.given ? Math.max(6, (b.given / maxB) * 128) : 3}px`, opacity: b.given ? 1 : .25 }} title={`${t('given')} ${formatINR(b.given)}`} />
+                        </div>
+                        <span className="text-[10px] text-hj-muted font-semibold">{b.label}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-              <div className="mt-3 space-y-2">
-                <button onClick={customerReportPdf} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                  <div className="w-8 h-8 rounded-[8px] flex items-center justify-center text-blue-600 bg-blue-50"><Users size={14}/></div>
-                  <div className="flex-1"><p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Customer Report</p><p className="text-[10px] text-[#6b7c77]">{customers.length} customers</p></div>
-                  <ChevronRight size={14} className="text-[#6b7c77]" />
-                </button>
-                <button onClick={()=>{ customerReportPdf(); showToast('Monthly report same as customer report')}} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                  <div className="w-8 h-8 rounded-[8px] flex items-center justify-center text-purple-600 bg-purple-50"><BarChart3 size={14}/></div>
-                  <div className="flex-1"><p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Monthly Report</p><p className="text-[10px] text-[#6b7c77]">Income, expense and balance</p></div>
-                  <ChevronRight size={14} className="text-[#6b7c77]" />
-                </button>
-                <button onClick={()=>{
-                  const methods=['Cash','UPI','Bank','Card','Other']
-                  let msg='Payment modes:\n'+methods.map(m=> `${m}: ${formatINR(txns.filter(t=>t.method===m).reduce((s,t)=>s+t.amount,0))}`).join('\n')
-                  alert(msg)
-                }} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                  <div className="w-8 h-8 rounded-[8px] flex items-center justify-center text-orange-600 bg-orange-50"><Wallet size={14}/></div>
-                  <div className="flex-1"><p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Payment Mode Report</p><p className="text-[10px] text-[#6b7c77]">Cash, UPI, Bank, Card</p></div>
-                  <ChevronRight size={14} className="text-[#6b7c77]" />
-                </button>
-                <button onClick={exportCSV} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                  <div className="w-8 h-8 rounded-[8px] flex items-center justify-center text-emerald-600 bg-emerald-50"><Download size={14}/></div>
-                  <div className="flex-1"><p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Export Reports</p><p className="text-[10px] text-[#6b7c77]">PDF / CSV / Excel</p></div>
-                  <ChevronRight size={14} className="text-[#6b7c77]" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ) })()}
-
-        {/* ===== BACKUP ===== */}
-        {view==='backup' && (
-          <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-6">
-            <div className={`flex items-center gap-3 px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
-              <img src="/illustrations/06-keep-data-safe.png" alt="" className="absolute -top-1 -right-2 w-14 h-14 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'} relative`}><ArrowLeft size={16}/></button>
-              <h2 className={`text-[14px] font-bold ${dark?'text-white':''} relative`}>Backup & Restore</h2>
-            </div>
-            <div className="px-4 pt-6 flex flex-col items-center">
-              <img src="/illustrations/06-keep-data-safe.png" alt="Backup" className="w-32 h-32 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <div className="w-12 h-12 rounded-[14px] bg-emerald-100 flex items-center justify-center text-emerald-700 mt-2"><Shield size={20}/></div>
-              <h3 className={`text-[13px] font-extrabold mt-2 ${dark?'text-white':''}`}>Keep your data safe</h3>
-              <p className="text-[10px] text-[#6b7c77] text-center mt-1">All your data stays on your device.<br/>No cloud, no login, no server.</p>
-            </div>
-            <div className="px-4 mt-5 space-y-2">
-              <button onClick={exportBackup} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><CloudDownload size={14}/></div>
-                <div className="flex-1"><p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Create Backup</p><p className="text-[10px] text-[#6b7c77]">Export all data to a JSON file</p></div>
-                <ChevronRight size={14} className="text-[#6b7c77]"/>
-              </button>
-              <button onClick={()=>fileRef.current?.click()} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><Upload size={14}/></div>
-                <div className="flex-1"><p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Restore Backup</p><p className="text-[10px] text-[#6b7c77]">Import data from a backup file</p></div>
-                <ChevronRight size={14} className="text-[#6b7c77]"/>
-              </button>
-              <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={importBackup} />
-              <div className={`${card} border rounded-[12px] p-3 flex items-center gap-3`}>
-                <div className="flex-1">
-                  <p className={`text-[11px] font-bold ${dark?'text-white':''}`}>Last Backup</p>
-                  <p className="text-[10px] text-[#6b7c77]">{lastBackup}</p>
-                  <p className="text-[10px] text-[#6b7c77]">{customers.length} customers • {txns.length} transactions</p>
+              {monthTxns.length > 0 && (
+                <div className="grid grid-cols-2 gap-3 mx-5 mt-4">
+                  <div className="rounded-3xl bg-hj-card border border-hj-line shadow-hj p-4 flex flex-col items-center">
+                    <Ring value={rate} label={`${Math.round(rate * 100)}%`} size={76} />
+                    <p className="text-[12px] font-bold mt-2 text-center">{t('collectionRate')}</p>
+                  </div>
+                  <div className="rounded-3xl bg-hj-card border border-hj-line shadow-hj p-4">
+                    <p className="text-[12px] font-bold mb-2">{t('byMode')}</p>
+                    <div className="space-y-2">
+                      {modes.map(m => (
+                        <div key={m.v}>
+                          <div className="flex justify-between text-[11px]"><span className="text-hj-muted font-semibold">{t(m.k)}</span><b className="tnum">{compactINR(m.amt)}</b></div>
+                          <div className="h-1.5 rounded-full bg-hj-card2 mt-1 overflow-hidden"><div className="h-full rounded-full bg-hj-brand" style={{ width: `${(m.amt / modeMax) * 100}%` }} /></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-                <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white"><Check size={12}/></div>
-              </div>
-              <div className="flex gap-2 items-center p-3 rounded-[12px] bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30">
-                <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-white shrink-0"><Info size={12}/></div>
-                <p className="text-[10px] leading-tight text-blue-900 dark:text-blue-200"><span className="font-bold">Your data is 100% local</span><br/>Keep regular backups for safety.</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ===== APP LOCK ===== */}
-        {view==='applock' && (
-          <div className="page-enter flex-1 flex flex-col overflow-hidden">
-            <div className={`flex items-center gap-3 px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
-              <img src="/illustrations/12-secure-offline.png" alt="" className="absolute -top-1 -right-2 w-14 h-14 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'} relative`}><ArrowLeft size={16}/></button>
-              <h2 className={`text-[14px] font-bold ${dark?'text-white':''} relative`}>App Lock</h2>
-            </div>
-            <div className="flex-1 overflow-auto scrollbar-hide px-6 pt-6 flex flex-col items-center">
-              <img src="/illustrations/15-100-private.png" alt="Secure Offline" className="w-28 h-28 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <div className="w-14 h-14 rounded-[16px] bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center text-white shadow-lg mt-2"><Lock size={22}/></div>
-              <h3 className={`text-[13px] font-extrabold mt-3 ${dark?'text-white':''}`}>Keep Your Data Private</h3>
-              <p className="text-[10px] text-[#6b7c77]">Set a PIN or use biometric lock</p>
-              <div className={`flex p-1 rounded-full border mt-4 ${dark?'bg-white/10 border-white/10':'bg-[#f2f7f4] border-[#e0ece6]'}`}>
-                <button onClick={()=>setPinMode('pin')} className={`px-6 py-1.5 rounded-full text-[11px] font-bold ${pinMode==='pin'?'bg-[#0e8a5a] text-white':'text-[#6b7c77]'}`}>PIN Lock</button>
-                <button onClick={()=>setPinMode('bio')} className={`px-6 py-1.5 rounded-full text-[11px] font-bold ${pinMode==='bio'?'bg-[#0e8a5a] text-white':'text-[#6b7c77]'}`}>Biometric</button>
-              </div>
-              {pinMode==='pin' ? (
+              )}
+              {topDue.length > 0 && (
                 <>
-                  <p className="text-[10px] font-bold text-[#6b7c77] mt-6">Enter 4-digit PIN {storedPin && `(current: ••••)`}</p>
-                  <div className="flex gap-2 mt-2">
-                    {[0,1,2,3].map(i=>(
-                      <div key={i} className={`w-3 h-3 rounded-full ${i < pin.length ? 'bg-[#0e8a5a]' : 'bg-[#dce8e0] dark:bg-white/20'}`} />
+                  <h3 className="font-display text-[16px] font-extrabold px-5 mt-5 mb-2">{t('topDues')}</h3>
+                  <div className="mx-5 rounded-3xl bg-hj-card border border-hj-line shadow-hj overflow-hidden">
+                    {topDue.map((c, i) => (
+                      <div key={c.id} className={`flex items-center gap-3 px-4 py-3 ${i ? 'border-t border-hj-line' : ''}`}>
+                        <span className="w-6 text-center font-display font-extrabold text-hj-muted">{i + 1}</span>
+                        <Avatar initials={c.initials} color={c.color} size={36} />
+                        <p className="flex-1 min-w-0 text-[14px] font-bold truncate">{c.name}</p>
+                        <p className="font-display font-extrabold text-hj-get tnum text-[14px]">{formatINR(c.balance)}</p>
+                        <button aria-label={t('remind')} onClick={() => remindCustomer(c)} className="press w-9 h-9 rounded-full bg-[#25D366]/15 text-[#128c4a] flex items-center justify-center"><MessageCircle size={16} /></button>
+                      </div>
                     ))}
                   </div>
-                  <div className="grid grid-cols-3 gap-3 mt-6 w-[180px]">
-                    {['1','2','3','4','5','6','7','8','9'].map(n=>(
-                      <button key={n} onClick={()=> pin.length<4 && setPin(p=>p+n)} className={`h-11 rounded-[10px] border font-bold ${dark?'bg-white/10 border-white/10 text-white':'bg-white border-[#e0ece6]'}`}>{n}</button>
-                    ))}
-                    <button onClick={()=>{
-                      if(storedPin){ setStoredPin(''); setLockEnabled(false); showToast('Lock disabled'); setPin('') } else showToast('Use PIN keypad')
-                    }} className={`h-11 rounded-[10px] border flex items-center justify-center ${dark?'bg-white/10 border-white/10':'bg-white border-[#e0ece6]'} text-[#6b7c77]`}><Fingerprint size={16}/></button>
-                    <button onClick={()=> pin.length<4 && setPin(p=>p+'0')} className={`h-11 rounded-[10px] border font-bold ${dark?'bg-white/10 border-white/10 text-white':'bg-white border-[#e0ece6]'}`}>0</button>
-                    <button onClick={()=>setPin(p=>p.slice(0,-1))} className={`h-11 rounded-[10px] border flex items-center justify-center ${dark?'bg-white/10 border-white/10':'bg-white border-[#e0ece6]'}`}><Trash2 size={16} className={muted}/></button>
-                  </div>
-                  <div className="flex gap-2 mt-4 w-full">
-                    <button onClick={()=>{ setPin(''); setStoredPin(''); setLockEnabled(false); showToast('Lock disabled') }} className={`flex-1 py-2 rounded-full border font-bold text-[11px] ${dark?'border-white/10 text-white':'border-[#e0ece6] text-[#6b7c77]'}`}>Disable</button>
-                    <button onClick={handleSavePin} className="flex-1 bg-[#0e8a5a] text-white rounded-full py-2 font-bold text-[11px]">Save PIN</button>
-                  </div>
-                  <p className="text-[10px] text-[#6b7c77] mt-2 text-center">App will ask PIN on next launch if enabled</p>
                 </>
-              ) : (
-                <div className="mt-8 flex flex-col items-center gap-3">
-                  <div className="w-20 h-20 rounded-full bg-emerald-50 dark:bg-white/10 flex items-center justify-center text-emerald-600"><Fingerprint size={36}/></div>
-                  <p className="text-[11px] text-[#6b7c77] text-center">Place your finger on the sensor to enable biometric unlock</p>
-                  <button onClick={()=>{setStoredPin('bio'); setLockEnabled(true); showToast('Biometric enabled')}} className="px-6 py-2 rounded-full bg-[#0e8a5a] text-white font-bold text-[11px]">Enable Biometric</button>
-                  <p className="text-[10px] text-[#6b7c77]">Stored as biometric flag • no PIN needed</p>
-                </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* ===== SETTINGS ===== */}
-        {view==='settings' && (
-          <div className="page-enter flex-1 overflow-auto scrollbar-hide pb-20">
-            <div className={`sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
-              <img src="/illustrations/12-secure-offline.png" alt="" className="absolute -top-1 -right-2 w-14 h-14 opacity-[0.06] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <h2 className={`text-[14px] font-extrabold ${dark?'text-white':''} relative`}>Settings</h2>
-            </div>
-            <div className="px-3 pt-3 space-y-1.5">
-              <button onClick={()=>setShowBiz(true)} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-emerald-600 bg-emerald-50"><Building2 size={14}/></div>
-                <span className={`flex-1 text-[11px] font-bold ${dark?'text-white':''}`}>Business Profile</span>
-                <span className="text-[10px] text-[#6b7c77] truncate max-w-[90px]">{bizName}</span>
-                <ChevronRight size={14} className="text-[#6b7c77]" />
-              </button>
-              <button onClick={()=>setShowLang(true)} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-blue-600 bg-blue-50"><Globe size={14}/></div>
-                <span className={`flex-1 text-[11px] font-bold ${dark?'text-white':''}`}>Language</span>
-                <span className="text-[10px] text-[#6b7c77] font-semibold">{lang}</span>
-                <ChevronRight size={14} className="text-[#6b7c77]" />
-              </button>
-              <button onClick={()=>{setDark(v=>!v); showToast(dark?'Light mode':'Dark mode')}} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                <div className="w-7 h-7 rounded-full flex items-center justify-center text-orange-500 bg-orange-50">{dark?<Moon size={14}/>:<Sun size={14}/>}</div>
-                <span className={`flex-1 text-[11px] font-bold ${dark?'text-white':''}`}>Theme</span>
-                <span className="text-[10px] text-[#6b7c77] font-semibold">{dark?'Dark':'System (Light)'}</span>
-                <ChevronRight size={14} className="text-[#6b7c77]" />
-              </button>
-              {[
-                {label:'Notifications', icon:Bell, color:'text-red-500 bg-red-50', action:()=>navigateTo('reminders')},
-                {label:'App Lock', icon:Lock, color:'text-emerald-700 bg-emerald-50', action:()=>navigateTo('applock')},
-                {label:'Backup & Restore', icon:CloudDownload, color:'text-emerald-600 bg-emerald-50', action:()=>navigateTo('backup')},
-                {label:'Import / Export', icon:Repeat, color:'text-teal-600 bg-teal-50', action:()=>navigateTo('backup')},
-                {label:'Manage Businesses', icon:Briefcase, color:'text-amber-600 bg-amber-50', action:()=>showToast('Manage Businesses: multiple khata coming soon')},
-                {label:'Help & Support', icon:HelpCircle, color:'text-blue-500 bg-blue-50',
-                action:()=>{ window.open('mailto:supportbreakouttrade@gmail.com?subject=HisabJod%20Support','_blank'); showToast('supportbreakouttrade@gmail.com') }},
-                {label:'About - Privacy', icon:Info, color:'text-slate-600 bg-slate-100', action:()=>alert('HisabJod v1.0\nOffline • Secure • No cloud\nMade for small businesses in India.')},
-              ].map(r=>(
-                <button key={r.label} onClick={r.action} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border ${card} text-left`}>
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center ${r.color}`}><r.icon size={14}/></div>
-                  <span className={`flex-1 text-[11px] font-bold ${dark?'text-white':''}`}>{r.label}</span>
-                  <ChevronRight size={14} className="text-[#6b7c77]" />
-                </button>
-              ))}
-              <div className="flex items-center justify-between py-3 px-1">
-                <span className="text-[10px] text-[#6b7c77]">Dark mode</span>
-                <button onClick={()=>{setDark(v=>!v); showToast(dark?'Light mode':'Dark mode')}} className={`w-11 h-6 rounded-full p-0.5 flex transition ${dark?'bg-[#0e8a5a] justify-end':'bg-[#dce8e0] justify-start'}`}>
-                  <span className="w-5 h-5 rounded-full bg-white shadow flex items-center justify-center">{dark?<Moon size={12}/>:<Sun size={12}/>}</span>
-                </button>
+              <h3 className="font-display text-[16px] font-extrabold px-5 mt-5 mb-2">{t('exports')}</h3>
+              <div className="mx-5 rounded-3xl bg-hj-card border border-hj-line shadow-hj overflow-hidden">
+                {[
+                  { l: t('customerReport'), s: t('customersN', { n: customers.length }), icon: Users, c: 'bg-hj-bluesoft text-[#2563eb]', act: customerReportPdf, ad: true },
+                  { l: t('monthReport'), s: monthLabel, icon: BarChart3, c: 'bg-hj-purplesoft text-[#7c3aed]', act: () => monthReportPdf(monthLabel, monthTxns), ad: true },
+                  { l: t('exportCsv'), s: 'Excel / Google Sheets', icon: FileSpreadsheet, c: 'bg-hj-getsoft text-hj-get', act: exportCSV, ad: true },
+                  { l: t('shareReport'), s: 'WhatsApp', icon: MessageCircle, c: 'bg-[#25D366]/15 text-[#128c4a]', act: () => shareTextViaWhatsApp('', `*${bizName} — ${monthLabel}*\nReceived: ${formatINR(mr)}\nGiven: ${formatINR(mg)}\nTo receive: ${formatINR(totalReceive)}\n\nSent via HisabJod`), ad: false },
+                ].map((r, i) => (
+                  <button key={r.l} onClick={r.act} className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-hj-card2 ${i ? 'border-t border-hj-line' : ''}`}>
+                    <span className={`w-10 h-10 rounded-2xl flex items-center justify-center ${r.c}`}><r.icon size={18} /></span>
+                    <div className="flex-1 min-w-0"><p className="text-[14px] font-bold">{r.l}</p><p className="text-[12px] text-hj-muted">{r.ad && native ? t('rewardHint') : r.s}</p></div>
+                    <ChevronRight size={18} className="text-hj-muted" />
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
-        {/* ===== REMINDERS ===== */}
-        {view==='reminders' && (
+        {/* ===================== BACKUP ===================== */}
+        {hydrated && view === 'backup' && (
           <div className="page-enter flex-1 flex flex-col overflow-hidden">
-            <div className={`flex items-center justify-between px-4 py-3 border-b ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#e0ece6]'} relative overflow-hidden`}>
-              <img src="/illustrations/08-never-miss-payment.png" alt="" className="absolute -top-1 -right-10 w-16 h-16 opacity-[0.07] pointer-events-none" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-              <div className="flex items-center gap-2 relative">
-                <button onClick={()=>goBack()} className={`w-8 h-8 rounded-full flex items-center justify-center ${dark?'bg-white/10':'bg-[#f2f7f4]'}`}><ArrowLeft size={16}/></button>
-                <h2 className={`text-[14px] font-bold ${dark?'text-white':''}`}>Reminders</h2>
+            <Header title={t('backupRestore')} onBack={goBack} />
+            <div className="flex-1 overflow-auto scrollbar-hide px-5 pb-8">
+              <div className="flex flex-col items-center text-center pt-4">
+                <Art name="data-safe" className="w-40 h-40 float-y dark:bg-[#eef6f0] dark:rounded-[40px]" />
+                <h3 className="font-display text-[20px] font-extrabold mt-1">{t('keepSafe')}</h3>
+                <p className="text-[13px] text-hj-muted mt-1 max-w-[280px]">{t('keepSafeSub')}</p>
               </div>
-              <button onClick={()=>showToast('Reminders: tap Remind to send WhatsApp')} className="relative"><Bell size={16} className={muted} /></button>
+              <div className="mt-5 rounded-3xl bg-hj-card border border-hj-line shadow-hj p-4 flex items-center gap-3">
+                <span className={`w-11 h-11 rounded-2xl flex items-center justify-center ${lastBackupAt ? 'bg-hj-getsoft text-hj-get' : 'bg-hj-goldsoft text-[#d97706]'}`}>{lastBackupAt ? <ShieldCheck size={20} /> : <Clock size={20} />}</span>
+                <div className="flex-1"><p className="text-[14px] font-bold">{t('lastBackup')}</p><p className="text-[12px] text-hj-muted">{lastBackupAt ? new Date(lastBackupAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : t('never')} • {t('customersN', { n: customers.length })} • {txns.length} {t('entries')}</p></div>
+              </div>
+              <div className="mt-3 rounded-3xl bg-hj-card border border-hj-line shadow-hj overflow-hidden">
+                {[
+                  { l: t('createBackup'), s: t('createBackupSub'), icon: CloudUpload, c: 'bg-hj-getsoft text-hj-get', act: exportBackup },
+                  { l: t('restoreBackup'), s: t('restoreBackupSub'), icon: Upload, c: 'bg-hj-bluesoft text-[#2563eb]', act: () => fileRef.current?.click() },
+                  { l: t('importCsv'), s: t('importCsvSub'), icon: FileSpreadsheet, c: 'bg-hj-goldsoft text-[#d97706]', act: () => csvRef.current?.click() },
+                ].map((r, i) => (
+                  <button key={r.l} onClick={r.act} className={`w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-hj-card2 ${i ? 'border-t border-hj-line' : ''}`}>
+                    <span className={`w-10 h-10 rounded-2xl flex items-center justify-center ${r.c}`}><r.icon size={18} /></span>
+                    <div className="flex-1"><p className="text-[14px] font-bold">{r.l}</p><p className="text-[12px] text-hj-muted">{r.s}</p></div>
+                    <ChevronRight size={18} className="text-hj-muted" />
+                  </button>
+                ))}
+              </div>
+              <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={importBackup} />
+              <input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={importCsv} />
+              <div className="mt-4 rounded-3xl bg-hj-bluesoft p-4 flex items-center gap-3">
+                <Art name="devices" className="w-16 h-16 shrink-0" />
+                <p className="text-[12px] leading-relaxed text-hj-ink2"><b className="block text-[14px] text-hj-ink">{t('newPhone')}</b>{t('createBackup')} → WhatsApp / Drive → {t('restoreBackup')}</p>
+              </div>
             </div>
-            <div className="flex gap-2 px-4 py-2">
-              {(['Upcoming','Overdue','Completed'] as ReminderTab[]).map(t=>(
-                <button key={t} onClick={()=>setReminderTab(t)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold border ${reminderTab===t?'bg-[#0e8a5a] text-white border-[#0e8a5a]': dark?'bg-white/10 text-white/70 border-white/10':'bg-[#f2f7f4] text-[#6b7c77] border-[#e0ece6]'}`}>{t}</button>
-              ))}
-            </div>
-            <div className="flex-1 overflow-auto px-3 space-y-2 pb-20 scrollbar-hide">
-              {reminders.filter(r=>r.status===reminderTab).map(r=>(
-                <div key={r.id} className={`${card} border rounded-[12px] p-3 flex items-center gap-3`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${r.status==='Overdue'?'bg-red-100 text-red-600': r.type==='rent'?'bg-blue-100 text-blue-600':'bg-orange-100 text-orange-500'}`}><Bell size={14}/></div>
-                  <div className="flex-1">
-                    <p className={`text-[11px] font-bold ${dark?'text-white':''}`}>{r.name}</p>
-                    <p className={`text-[11px] font-extrabold ${r.type==='rent'?'text-[#6b7c77]':'text-[#0e8a5a]'}`}>{formatINR(r.amount)}</p>
-                    <p className="text-[10px] text-[#6b7c77]">{r.due}</p>
-                  </div>
-                  {r.status!=='Completed' ? (
-                    <button onClick={()=>{
-                      if(r.type==='rent'){ showToast('Rent reminder added'); return }
-                      const c=customers.find(x=>x.name===r.name); const phone=c?.phone||''; const msg=`Hi ${r.name}, reminder: ${formatINR(r.amount)} due. - HisabJod`
-                      if(phone) window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank')
-                      setReminders(prev=>prev.map(x=>x.id===r.id? {...x, status:'Completed' as const}:x)); showToast('Reminder sent & completed')
-                    }} className={`px-3 py-1.5 rounded-full text-[10px] font-bold border ${r.type==='rent'?'bg-white text-[#0e8a5a] border-[#0e8a5a]':'bg-[#0e8a5a] text-white border-[#0e8a5a]'}`}>{r.type==='rent'?'Add':'Remind'}</button>
-                  ) : (
-                    <span className="px-3 py-1.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Done</span>
-                  )}
-                </div>
-              ))}
-              {reminders.filter(r=>r.status===reminderTab).length===0 && (
-                <div className="flex flex-col items-center py-8">
-                  <img src="/illustrations/12-no-reminders.png" alt="No Reminders" className="w-36 h-36 object-contain" onError={e=>{ (e.target as HTMLImageElement).style.display='none' }} />
-                  <p className="text-[11px] font-bold mt-2">No {reminderTab} reminders</p>
-                  <p className="text-[10px] text-[#6b7c77]">You&apos;re all caught up!</p>
-                </div>
-              )}
-            </div>
-            <button onClick={()=>setShowAddReminder(true)} className="absolute bottom-20 right-4 w-11 h-11 rounded-full bg-[#0e8a5a] text-white flex items-center justify-center shadow-lg"><Plus size={18}/></button>
           </div>
         )}
 
-        {/* ===== BOTTOM NAV ===== */}
-        {view!=='splash' && view!=='applock' && view!=='add-transaction' && view!=='receipt' && (
-          <nav className={`absolute bottom-0 left-0 right-0 h-[64px] border-t flex items-center justify-around px-2 ${dark?'bg-[#111d18] border-white/10':'bg-white border-[#dce8e0]'}`}>
-            {[
-              {id:'home', label:'Home', icon:Home},
-              {id:'customers', label:'Customers', icon:Users},
-              {id:'add', label:'', icon:Plus, fab:true},
-              {id:'reports', label:'Reports', icon:BarChart3},
-              {id:'settings', label:'More', icon:MoreHorizontal},
-            ].map(item=>{
-              const active = view===item.id || (view==='customer-detail' && item.id==='customers') || (view==='reminders' && item.id==='settings') || (view==='backup' && item.id==='settings')
-              if((item as any).fab) return (
-                <button key={item.id} onClick={()=>{if(customers.length===0) setShowAddCust(true); else navigateTo('add-transaction')}} className="w-11 h-11 rounded-full bg-[#0e8a5a] text-white flex items-center justify-center shadow-[0_6px_16px_rgba(14,138,90,.4)] -mt-2">
-                  <Plus size={20} />
-                </button>
-              )
-              return (
-                <button key={item.id} onClick={()=>navigateTo(item.id as View)} className={`flex flex-col items-center gap-0.5 min-w-[52px] ${active?'text-[#0e8a5a]':'text-[#6b7c77]'}`}>
-                  <item.icon size={18} strokeWidth={active?2.4:1.8} />
-                  <span className={`text-[9px] ${active?'font-extrabold':'font-medium'}`}>{item.label}</span>
-                </button>
-              )
-            })}
+        {/* ===================== APP LOCK ===================== */}
+        {hydrated && view === 'applock' && (
+          <div className="page-enter flex-1 flex flex-col overflow-hidden">
+            <Header title={t('appLock')} onBack={goBack} />
+            <div className="flex-1 overflow-auto scrollbar-hide px-6 pt-4 pb-8 flex flex-col items-center text-center">
+              <Art name="secure" className="w-36 h-36 dark:bg-[#eef6f0] dark:rounded-[36px]" />
+              <h3 className="font-display text-[20px] font-extrabold mt-1">{t('lockTitle')}</h3>
+              <p className="text-[13px] text-hj-muted mt-1">{t('lockSub')}</p>
+              {lockEnabled && storedPin ? (
+                <div className="w-full mt-6 space-y-3">
+                  <div className="rounded-3xl bg-hj-getsoft p-4 flex items-center gap-3 text-left"><ShieldCheck className="text-hj-get" /><p className="font-bold">{t('lockOn')}</p></div>
+                  <PrimaryBtn tone="danger" onClick={() => { setStoredPin(''); setLockEnabled(false); showToast(t('off')) }}>{t('disableLock')}</PrimaryBtn>
+                </div>
+              ) : (
+                <>
+                  <p className="text-[14px] font-bold mt-6">{pinFirst ? t('confirmPin') : t('enterPin')}</p>
+                  <div key={shakeKey} className={`flex gap-4 mt-3 ${shakeKey ? 'shake' : ''}`}>{[0, 1, 2, 3].map(i => <span key={i} className={`w-4 h-4 rounded-full transition ${i < pinDraft.length ? 'bg-hj-brand scale-110' : 'bg-hj-line'}`} />)}</div>
+                  <PinPad onKey={setupKey} />
+                </>
+              )}
+              <p className="mt-5 text-[12px] text-hj-muted flex items-center gap-1.5"><Fingerprint size={14} /> {t('biometricSoon')}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ===================== SETTINGS ===================== */}
+        {hydrated && view === 'settings' && (
+          <div className={`page-enter flex-1 overflow-auto scrollbar-hide ${navPad}`}>
+            <div className="px-5 pt-5"><h2 className="font-display text-[24px] font-extrabold">{t('settings')}</h2></div>
+            <button onClick={() => setSheet('biz')} className="press mx-5 mt-4 w-[calc(100%-40px)] text-left relative overflow-hidden rounded-[28px] p-4 bg-[radial-gradient(120%_120%_at_0%_0%,#14a05a,#0b7a43_50%,#064d2a)] text-white flex items-center gap-3 shadow-hjlg">
+              <Art name="shop" className="absolute -right-3 -bottom-4 w-24 opacity-95" />
+              <span className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center font-display text-[20px] font-extrabold">{bizInitials}</span>
+              <div className="relative flex-1 min-w-0 pr-16"><p className="font-display text-[18px] font-extrabold truncate">{bizName}</p><p className="text-[12px] text-white/75 truncate">{ownerName || t('businessProfile')} {bizPhone && `• ${bizPhone}`}</p></div>
+            </button>
+            {([
+              [t('general'), [
+                { l: t('language'), icon: Globe, c: 'bg-hj-bluesoft text-[#2563eb]', v: lang, act: () => setSheet('lang') },
+                { l: t('darkMode'), icon: Moon, c: 'bg-hj-purplesoft text-[#7c3aed]', toggle: true, on: dark, act: () => setDark(d => !d) },
+                { l: t('reminders'), icon: Bell, c: 'bg-hj-goldsoft text-[#d97706]', v: String(reminders.filter(r => reminderStatus(r) !== 'Completed').length), act: () => navigateTo('reminders') },
+              ]],
+              [t('security'), [
+                { l: t('appLock'), icon: Lock, c: 'bg-hj-getsoft text-hj-get', v: lockEnabled ? t('on') : t('off'), act: () => { setPinFirst(''); setPinDraft(''); navigateTo('applock') } },
+                { l: t('backupRestore'), icon: CloudUpload, c: 'bg-hj-getsoft text-hj-get', v: lastBackupAt ? shortDate(localISO(new Date(lastBackupAt))) : t('never'), act: () => navigateTo('backup') },
+              ]],
+              [t('support'), [
+                { l: t('inviteTitle'), icon: Gift, c: 'bg-hj-pinksoft text-[#db2777]', act: inviteFriends },
+                { l: t('rateUs'), icon: Star, c: 'bg-hj-goldsoft text-[#d97706]', act: () => window.open('https://play.google.com/store/apps/details?id=com.hisabjod.digitalkhata', '_blank') },
+                { l: t('help'), icon: HelpCircle, c: 'bg-hj-bluesoft text-[#2563eb]', act: () => { window.open('mailto:supportbreakouttrade@gmail.com?subject=HisabJod%20Support', '_blank') } },
+                { l: t('about'), icon: Info, c: 'bg-hj-card2 text-hj-muted', act: () => setSheet('about') },
+              ]],
+            ] as [string, any[]][]).map(([sec, rows]) => (
+              <div key={sec}>
+                <p className="px-6 mt-6 mb-2 text-[12px] font-bold text-hj-muted uppercase tracking-wider">{sec}</p>
+                <div className="mx-5 rounded-3xl bg-hj-card border border-hj-line shadow-hj overflow-hidden">
+                  {rows.map((r: any, i: number) => (
+                    <div key={r.l} role="button" tabIndex={0} onClick={r.act} className={`w-full flex items-center gap-3 px-4 py-3.5 cursor-pointer active:bg-hj-card2 ${i ? 'border-t border-hj-line' : ''}`}>
+                      <span className={`w-10 h-10 rounded-2xl flex items-center justify-center ${r.c}`}><r.icon size={18} /></span>
+                      <span className="flex-1 text-[14px] font-bold">{r.l}</span>
+                      {r.toggle ? <Toggle on={r.on} onChange={() => { }} label={r.l} /> : <>{r.v && <span className="text-[13px] text-hj-muted font-semibold">{r.v}</span>}<ChevronRight size={18} className="text-hj-muted" /></>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            <button onClick={() => setConfirm({ title: t('resetQ'), sub: t('resetSub'), cta: t('erase'), onYes: eraseAll })} className="press mx-5 mt-6 w-[calc(100%-40px)] h-12 rounded-2xl bg-hj-givesoft text-hj-give font-bold text-[14px] flex items-center justify-center gap-2"><Trash2 size={16} /> {t('resetData')}</button>
+            <p className="text-center text-[12px] text-hj-muted mt-5">HisabJod • {t('version')} 2.0 • {t('simpleSecureOffline')}</p>
+          </div>
+        )}
+
+        {/* ===================== REMINDERS ===================== */}
+        {hydrated && view === 'reminders' && (() => {
+          const counts = { Upcoming: 0, Overdue: 0, Completed: 0 } as Record<ReminderTab, number>
+          reminders.forEach(r => counts[reminderStatus(r)]++)
+          const list = reminders.filter(r => reminderStatus(r) === reminderTab).sort((a, b) => (a.dueISO || '').localeCompare(b.dueISO || ''))
+          return (
+            <div className="page-enter flex-1 flex flex-col overflow-hidden">
+              <Header title={t('reminders')} onBack={goBack} />
+              <div className="px-5 pt-3"><Segmented value={reminderTab} onChange={setReminderTab} options={(['Upcoming', 'Overdue', 'Completed'] as ReminderTab[]).map(v => ({ v, label: <>{t(v === 'Upcoming' ? 'upcoming' : v === 'Overdue' ? 'overdue' : 'completed')} <span className="opacity-50">{counts[v]}</span></> }))} /></div>
+              <div className="flex-1 overflow-auto scrollbar-hide px-5 pt-4 pb-[110px] space-y-3">
+                {list.map(r => {
+                  const st = reminderStatus(r)
+                  const c = customers.find(x => x.id === r.customerId) || customers.find(x => x.name === r.name)
+                  return (
+                    <div key={r.id} className="rounded-3xl bg-hj-card border border-hj-line shadow-hj p-4 flex items-center gap-3">
+                      {c ? <Avatar initials={c.initials} color={c.color} size={44} /> : <span className="w-11 h-11 rounded-full bg-hj-bluesoft text-[#2563eb] flex items-center justify-center"><Calendar size={18} /></span>}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[14px] font-bold truncate">{r.name}</p>
+                        <p className="font-display text-[16px] font-extrabold tnum">{formatINR(r.amount)}</p>
+                        <p className={`text-[12px] font-semibold ${st === 'Overdue' ? 'text-hj-give' : st === 'Completed' ? 'text-hj-get' : 'text-hj-muted'}`}>{st === 'Completed' ? '✓ ' + t('completed') : dueText(r)}</p>
+                      </div>
+                      {st !== 'Completed' ? (
+                        <div className="flex flex-col gap-2">
+                          {c && c.phone !== '-' && <button onClick={() => { remindCustomer(c, r.amount); setReminders(p => p.map(x => x.id === r.id ? { ...x, status: 'Completed' } : x)) }} className="press h-9 px-3.5 rounded-full bg-[#25D366] text-white text-[12px] font-bold flex items-center gap-1"><MessageCircle size={14} />{t('send')}</button>}
+                          <button onClick={() => { setReminders(p => p.map(x => x.id === r.id ? { ...x, status: 'Completed' } : x)); showToast(t('completed')) }} className="press h-9 px-3.5 rounded-full bg-hj-card2 border border-hj-line text-[12px] font-bold">{t('markDone')}</button>
+                        </div>
+                      ) : (
+                        <button aria-label={t('delete')} onClick={() => setReminders(p => p.filter(x => x.id !== r.id))} className="press w-9 h-9 rounded-full bg-hj-card2 text-hj-muted flex items-center justify-center"><Trash2 size={15} /></button>
+                      )}
+                    </div>
+                  )
+                })}
+                {list.length === 0 && <EmptyState art="no-reminders" title={t('noReminders')} sub={t('noRemindersSub')} cta={t('addReminder')} onCta={() => openAddReminder()} />}
+              </div>
+              <button onClick={() => openAddReminder()} className="press absolute bottom-[92px] right-5 h-14 pl-4 pr-5 rounded-full bg-hj-brand text-white flex items-center gap-2 font-bold text-[14px] shadow-[0_12px_28px_rgba(11,122,67,.4)]"><Plus size={20} strokeWidth={2.6} /> {t('addReminder')}</button>
+            </div>
+          )
+        })()}
+
+        {/* ===================== BOTTOM NAV ===================== */}
+        {showNav && (
+          <nav className="absolute bottom-0 inset-x-0 z-30 px-3 pb-3 pt-2 bg-gradient-to-t from-hj-bg via-hj-bg/95 to-transparent">
+            <div className="relative h-[66px] rounded-[24px] bg-hj-card border border-hj-line shadow-hjlg flex items-center justify-around px-1">
+              {[
+                { id: 'home', label: t('home'), icon: Home },
+                { id: 'customers', label: t('customers'), icon: Users },
+                { id: 'add', label: '', icon: Plus, fab: true },
+                { id: 'reports', label: t('reports'), icon: BarChart3 },
+                { id: 'settings', label: t('more'), icon: MoreHorizontal },
+              ].map(item => {
+                const active = view === item.id || (['reminders', 'backup'].includes(view) && item.id === 'settings')
+                if (item.fab) return (
+                  <button key="fab" aria-label={t('newEntry')} onClick={() => startEntry('give')} className="press -mt-8 w-[60px] h-[60px] rounded-[22px] bg-gradient-to-br from-[#14a05a] to-[#075a31] text-white flex items-center justify-center shadow-[0_12px_26px_rgba(11,122,67,.45)] ring-4 ring-hj-bg">
+                    <Plus size={28} strokeWidth={2.6} />
+                  </button>
+                )
+                return (
+                  <button key={item.id} onClick={() => goTab(item.id as View)} className={`press relative flex flex-col items-center justify-center gap-1 w-[64px] h-full ${active ? 'text-hj-brand' : 'text-hj-muted'}`}>
+                    <item.icon size={21} strokeWidth={active ? 2.5 : 1.9} />
+                    <span className={`text-[11px] ${active ? 'font-extrabold' : 'font-semibold'}`}>{item.label}</span>
+                    {active && <span className="absolute top-1 w-1 h-1 rounded-full bg-hj-brand" />}
+                  </button>
+                )
+              })}
+            </div>
           </nav>
         )}
 
-        {/* ===== MODALS ===== */}
-        {showAddCust && (
-          <div className="absolute inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={()=>setShowAddCust(false)}>
-            <div onClick={e=>e.stopPropagation()} className={`w-full sm:max-w-[380px] rounded-t-[18px] sm:rounded-[18px] p-5 ${dark?'bg-[#18251f] text-white':'bg-white'}`}>
-              <div className="flex justify-between items-center"><h3 className="font-extrabold text-[14px]">Add Customer</h3><button onClick={()=>setShowAddCust(false)} className="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center"><X size={14}/></button></div>
-              <div className="mt-4 space-y-3">
-                <input value={newCust.name} onChange={e=>setNewCust(v=>({...v,name:e.target.value}))} placeholder="Name *" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <input value={newCust.phone} onChange={e=>setNewCust(v=>({...v,phone:e.target.value}))} placeholder="Mobile (+91...)" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <input value={newCust.village} onChange={e=>setNewCust(v=>({...v,village:e.target.value}))} placeholder="Village / City (optional)" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <button onClick={addCustomer} className="w-full bg-[#0e8a5a] text-white rounded-full py-2.5 font-bold text-[13px]">Save Customer</button>
+        {/* ===================== SHEETS ===================== */}
+        <Sheet open={sheet === 'addCust'} onClose={() => setSheet(null)} title={t('addCustomer')}>
+          <div className="flex justify-center -mt-1 mb-2"><Art name="add-user" className="w-24 h-24" /></div>
+          <div className="space-y-3">
+            <Field label={t('name') + ' *'}><input autoFocus value={newCust.name} onChange={e => setNewCust(v => ({ ...v, name: e.target.value }))} placeholder="Ramesh Patil" className={inputCls} /></Field>
+            <Field label={t('phone')}><input inputMode="tel" value={newCust.phone} onChange={e => setNewCust(v => ({ ...v, phone: e.target.value }))} placeholder="+91 98765 43210" className={inputCls} /></Field>
+            <Field label={t('village')}><input value={newCust.village} onChange={e => setNewCust(v => ({ ...v, village: e.target.value }))} placeholder="Sangli" className={inputCls} /></Field>
+            <Field label={t('openingBal')}>
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <input inputMode="decimal" value={newCust.opening} onChange={e => setNewCust(v => ({ ...v, opening: e.target.value.replace(/[^\d.]/g, '') }))} placeholder="₹ 0" className={inputCls} />
+                <div className="flex p-1 rounded-2xl bg-hj-card2 border border-hj-line">
+                  <button onClick={() => setNewCust(v => ({ ...v, dir: 'get' }))} className={`px-2.5 rounded-xl text-[12px] font-bold ${newCust.dir === 'get' ? 'bg-hj-get text-white' : 'text-hj-muted'}`}>{t('theyOweMe')}</button>
+                  <button onClick={() => setNewCust(v => ({ ...v, dir: 'give' }))} className={`px-2.5 rounded-xl text-[12px] font-bold ${newCust.dir === 'give' ? 'bg-hj-give text-white' : 'text-hj-muted'}`}>{t('iOweThem')}</button>
+                </div>
               </div>
-            </div>
+            </Field>
+            <PrimaryBtn onClick={addCustomer} className="mt-2"><Check size={18} strokeWidth={3} /> {t('saveCustomer')}</PrimaryBtn>
           </div>
-        )}
-        {showEditCust && (
-          <div className="absolute inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={()=>setShowEditCust(false)}>
-            <div onClick={e=>e.stopPropagation()} className={`w-full sm:max-w-[380px] rounded-t-[18px] sm:rounded-[18px] p-5 ${dark?'bg-[#18251f] text-white':'bg-white'}`}>
-              <div className="flex justify-between items-center"><h3 className="font-extrabold text-[14px]">Edit Customer</h3><button onClick={()=>setShowEditCust(false)} className="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center"><X size={14}/></button></div>
-              <div className="mt-4 space-y-3">
-                <input value={editCust.name} onChange={e=>setEditCust(v=>({...v,name:e.target.value}))} placeholder="Name *" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <input value={editCust.phone} onChange={e=>setEditCust(v=>({...v,phone:e.target.value}))} placeholder="Mobile" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <input value={editCust.village} onChange={e=>setEditCust(v=>({...v,village:e.target.value}))} placeholder="Village / City" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <button onClick={saveEditCustomer} className="w-full bg-[#0e8a5a] text-white rounded-full py-2.5 font-bold text-[13px]">Update</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {showBiz && (
-          <div className="absolute inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={()=>setShowBiz(false)}>
-            <div onClick={e=>e.stopPropagation()} className={`w-full sm:max-w-[380px] rounded-t-[18px] sm:rounded-[18px] p-5 ${dark?'bg-[#18251f] text-white':'bg-white'}`}>
-              <div className="flex justify-between items-center"><h3 className="font-extrabold text-[14px]">Business Profile</h3><button onClick={()=>setShowBiz(false)} className="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center"><X size={14}/></button></div>
-              <div className="mt-4 space-y-3">
-                <input value={bizName} onChange={e=>setBizName(e.target.value)} placeholder="Business name" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <input value={bizPhone} onChange={e=>setBizPhone(e.target.value)} placeholder="Phone" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <button onClick={()=>{setShowBiz(false); showToast('Business profile saved')}} className="w-full bg-[#0e8a5a] text-white rounded-full py-2.5 font-bold text-[13px]">Save</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {showLang && (
-          <div className="absolute inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={()=>setShowLang(false)}>
-            <div onClick={e=>e.stopPropagation()} className={`w-full sm:max-w-[380px] rounded-t-[18px] sm:rounded-[18px] p-5 ${dark?'bg-[#18251f] text-white':'bg-white'}`}>
-              <h3 className="font-extrabold text-[14px]">Choose Language</h3>
-              <div className="mt-3 space-y-2">
-                {(['English','मराठी','हिंदी'] as Lang[]).map(l=>(
-                  <button key={l} onClick={()=>{setLang(l); setShowLang(false); showToast(`Language: ${l}`)}} className={`w-full flex justify-between items-center p-3 rounded-[12px] border ${lang===l?'bg-[#0e8a5a] text-white border-[#0e8a5a]':'bg-[#f2f7f4] border-[#e0ece6] text-[#6b7c77] dark:bg-white/5 dark:text-white/70 dark:border-white/10'}`}>
-                    <span className="font-bold text-[13px]">{l}</span>{lang===l && <Check size={14}/>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        {showChangeCust && (
-          <div className="absolute inset-0 z-50 bg-black/40 flex flex-col justify-end sm:justify-center p-0 sm:p-4" onClick={()=>setShowChangeCust(false)}>
-            <div onClick={e=>e.stopPropagation()} className={`w-full sm:max-w-[380px] max-h-[70vh] overflow-auto rounded-t-[18px] sm:rounded-[18px] p-4 ${dark?'bg-[#18251f] text-white':'bg-white'}`}>
-              <div className="flex justify-between items-center"><h3 className="font-extrabold text-[14px]">Select Customer</h3><button onClick={()=>setShowChangeCust(false)}><X size={16}/></button></div>
-              <div className="mt-3 space-y-2">
-                {customers.map(c=>(
-                  <button key={c.id} onClick={()=>{setSelectedId(c.id); setShowChangeCust(false); showToast(`Selected ${c.name}`)}} className={`w-full flex items-center gap-3 p-3 rounded-[12px] border text-left ${selectedId===c.id?'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800':'bg-[#f2f7f4] border-[#e0ece6] dark:bg-white/5 dark:border-white/10'}`}>
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-[11px]" style={{background:c.color}}>{c.initials}</div>
-                    <div><p className="text-[12px] font-bold">{c.name}</p><p className="text-[10px] text-[#6b7c77]">{c.phone}</p></div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        {showAddReminder && (
-          <div className="absolute inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={()=>setShowAddReminder(false)}>
-            <div onClick={e=>e.stopPropagation()} className={`w-full sm:max-w-[380px] rounded-t-[18px] sm:rounded-[18px] p-5 ${dark?'bg-[#18251f] text-white':'bg-white'}`}>
-              <div className="flex justify-between items-center"><h3 className="font-extrabold text-[14px]">Add Reminder</h3><button onClick={()=>setShowAddReminder(false)} className="w-8 h-8 rounded-full bg-black/5 flex items-center justify-center"><X size={14}/></button></div>
-              <div className="mt-4 space-y-3">
-                <input value={newReminder.name} onChange={e=>setNewReminder(v=>({...v,name:e.target.value}))} placeholder="Customer / Title" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <input value={newReminder.amount} onChange={e=>setNewReminder(v=>({...v,amount:e.target.value.replace(/\D/g,'')}))} placeholder="Amount" type="text" className={`w-full rounded-[10px] border px-3 py-2.5 text-[12px] outline-none ${inputBg}`} />
-                <button onClick={handleAddReminder} className="w-full bg-[#0e8a5a] text-white rounded-full py-2.5 font-bold text-[13px]">Add Reminder</button>
-              </div>
-            </div>
-          </div>
-        )}
-        {showRatePrompt && (
-          <div className="absolute inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-            <div className={`w-full max-w-[320px] rounded-[18px] p-5 text-center ${dark?'bg-[#18251f] text-white':'bg-white'}`}>
-              <p className="text-[18px]">⭐⭐⭐⭐⭐</p>
-              <h3 className="font-extrabold text-[14px] mt-2">Enjoying HisabJod?</h3>
-              <p className="text-[11px] text-[#6b7c77] mt-1">Rate us on Play Store — helps dukandars like you find us</p>
-              <div className="grid grid-cols-2 gap-2 mt-4">
-                <button onClick={()=>{setShowRatePrompt(false); localStorage.setItem('hisabjod-rated','later'); showToast('Thanks!')}} className={`py-2 rounded-full border font-bold text-[11px] ${dark?'border-white/10 text-white':'border-[#e0ece6] text-[#6b7c77]'}`}>Later</button>
-                <button onClick={()=>{setShowRatePrompt(false); localStorage.setItem('hisabjod-rated','yes'); window.open('https://play.google.com/store/apps/details?id=com.hisabjod.digitalkhata','_blank'); showToast('Thanks for rating!')}} className="py-2 rounded-full bg-[#0e8a5a] text-white font-bold text-[11px]">Rate Now</button>
-              </div>
-            </div>
-          </div>
-        )}
+        </Sheet>
 
-        <div className="h-1" />
+        <Sheet open={sheet === 'editCust'} onClose={() => setSheet(null)} title={t('editCustomer')}>
+          <div className="space-y-3">
+            <Field label={t('name') + ' *'}><input value={editCust.name} onChange={e => setEditCust(v => ({ ...v, name: e.target.value }))} className={inputCls} /></Field>
+            <Field label={t('phone')}><input inputMode="tel" value={editCust.phone} onChange={e => setEditCust(v => ({ ...v, phone: e.target.value }))} className={inputCls} /></Field>
+            <Field label={t('village')}><input value={editCust.village} onChange={e => setEditCust(v => ({ ...v, village: e.target.value }))} className={inputCls} /></Field>
+            <PrimaryBtn onClick={saveEditCustomer} className="mt-2">{t('update')}</PrimaryBtn>
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'biz'} onClose={() => setSheet(null)} title={t('businessProfile')}>
+          <div className="space-y-3">
+            <Field label={t('businessName')}><input value={bizName} onChange={e => setBizName(e.target.value)} className={inputCls} /></Field>
+            <Field label={t('ownerName')}><input value={ownerName} onChange={e => setOwnerName(e.target.value)} placeholder="Nivrutti" className={inputCls} /></Field>
+            <Field label={t('phone')}><input inputMode="tel" value={bizPhone} onChange={e => setBizPhone(e.target.value)} className={inputCls} /></Field>
+            <Field label={t('upiId')}><input value={bizUpi} onChange={e => setBizUpi(e.target.value.trim())} placeholder="shreekirana@upi" className={inputCls} /></Field>
+            <PrimaryBtn onClick={() => { setSheet(null); showToast('✓') }} className="mt-2">{t('save')}</PrimaryBtn>
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'lang'} onClose={() => setSheet(null)} title={t('chooseLanguage')}>
+          <div className="space-y-2">
+            {LANGS.map(l => (
+              <button key={l} onClick={() => { setLang(l); setSheet(null) }} className={`press w-full flex justify-between items-center h-14 px-4 rounded-2xl border-2 ${lang === l ? 'border-hj-brand bg-hj-brandsoft' : 'border-hj-line bg-hj-card'}`}>
+                <span className="font-bold text-[16px]">{l}</span>{lang === l && <span className="w-6 h-6 rounded-full bg-hj-brand text-white flex items-center justify-center"><Check size={14} strokeWidth={3} /></span>}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'changeCust'} onClose={() => setSheet(null)} title={t('selectCustomer')} tall>
+          <div className="space-y-2">
+            {customers.map(c => (
+              <button key={c.id} onClick={() => { setSelectedId(c.id); setSheet(null) }} className={`press w-full flex items-center gap-3 p-3 rounded-2xl border-2 text-left ${selectedId === c.id ? 'border-hj-brand bg-hj-brandsoft' : 'border-hj-line bg-hj-card'}`}>
+                <Avatar initials={c.initials} color={c.color} size={40} />
+                <div className="flex-1 min-w-0"><p className="text-[14px] font-bold truncate">{c.name}</p><p className="text-[12px] text-hj-muted">{c.phone}</p></div>
+                <span className={`font-display font-extrabold tnum text-[14px] ${c.balance >= 0 ? 'text-hj-get' : 'text-hj-give'}`}>{formatINR(c.balance)}</span>
+              </button>
+            ))}
+            <button onClick={() => setSheet('addCust')} className="press w-full h-12 rounded-2xl border-2 border-dashed border-hj-line text-hj-brand font-bold text-[14px] flex items-center justify-center gap-2"><Plus size={16} /> {t('addCustomer')}</button>
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'addReminder'} onClose={() => setSheet(null)} title={t('addReminder')}>
+          <div className="flex justify-center -mt-1 mb-2"><Art name="calendar" className="w-24 h-24" /></div>
+          <div className="space-y-3">
+            <Field label={t('customer')}>
+              <div className="flex gap-2 overflow-auto scrollbar-hide pb-1">
+                {customers.filter(c => c.balance > 0).concat(customers.filter(c => c.balance <= 0)).slice(0, 12).map(c => (
+                  <button key={c.id} onClick={() => setNewReminder(v => ({ ...v, customerId: c.id, name: c.name, amount: v.amount || (c.balance > 0 ? String(c.balance) : '') }))} className={`press shrink-0 flex flex-col items-center gap-1 w-16 p-1.5 rounded-2xl border-2 ${newReminder.customerId === c.id ? 'border-hj-brand bg-hj-brandsoft' : 'border-transparent'}`}>
+                    <Avatar initials={c.initials} color={c.color} size={38} /><span className="text-[10px] font-bold truncate w-full text-center">{c.name.split(' ')[0]}</span>
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label={t('titleOrCustomer')}><input value={newReminder.name} onChange={e => setNewReminder(v => ({ ...v, name: e.target.value, customerId: '' }))} className={inputCls} /></Field>
+            <Field label={t('amount')}><input inputMode="decimal" value={newReminder.amount} onChange={e => setNewReminder(v => ({ ...v, amount: e.target.value.replace(/[^\d.]/g, '') }))} placeholder="₹" className={inputCls} /></Field>
+            <Field label={t('dueDate')}>
+              <div className="flex gap-2 mb-2">
+                {[[0, t('today')], [1, t('tomorrow')], [7, '+7'], [30, '+30']].map(([n, l]) => (
+                  <Chip key={String(n)} active={newReminder.dueISO === addDays(localISO(), Number(n))} onClick={() => setNewReminder(v => ({ ...v, dueISO: addDays(localISO(), Number(n)) }))}>{String(l)}</Chip>
+                ))}
+              </div>
+              <input type="date" value={newReminder.dueISO} onChange={e => e.target.value && setNewReminder(v => ({ ...v, dueISO: e.target.value }))} className={inputCls} />
+            </Field>
+            <PrimaryBtn onClick={handleAddReminder} className="mt-2"><Bell size={17} /> {t('addReminder')}</PrimaryBtn>
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'sort'} onClose={() => setSheet(null)} title={t('sortBy')}>
+          <div className="space-y-2">
+            {([['amount', 'sortAmount'], ['recent', 'sortRecent'], ['name', 'sortName']] as [SortKey, TKey][]).map(([k, l]) => (
+              <button key={k} onClick={() => { setSortKey(k); setSheet(null) }} className={`press w-full flex justify-between items-center h-14 px-4 rounded-2xl border-2 ${sortKey === k ? 'border-hj-brand bg-hj-brandsoft' : 'border-hj-line bg-hj-card'}`}>
+                <span className="font-bold text-[15px]">{t(l)}</span>{sortKey === k && <Check size={18} className="text-hj-brand" strokeWidth={3} />}
+              </button>
+            ))}
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'month'} onClose={() => setSheet(null)} title={t('date')}>
+          <div className="grid grid-cols-2 gap-2">
+            {monthOptions.map(m => (
+              <button key={m} onClick={() => { setReportMonth(m); setSheet(null) }} className={`press h-12 rounded-2xl border-2 font-bold text-[14px] ${reportMonth === m ? 'border-hj-brand bg-hj-brandsoft text-hj-brand' : 'border-hj-line bg-hj-card'}`}>{monthLabelOf(m)}</button>
+            ))}
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'txnActions' && !!actionTxn} onClose={() => setSheet(null)}>
+          {actionTxn && (
+            <div className="pt-2">
+              <div className="flex items-center gap-3 mb-4">
+                <span className={`w-12 h-12 rounded-2xl flex items-center justify-center ${actionTxn.type === 'received' ? 'bg-hj-getsoft text-hj-get' : 'bg-hj-givesoft text-hj-give'}`}>{actionTxn.type === 'received' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}</span>
+                <div className="flex-1"><p className={`font-display text-[22px] font-extrabold tnum ${actionTxn.type === 'received' ? 'text-hj-get' : 'text-hj-give'}`}>{formatINR(actionTxn.amount)}</p><p className="text-[12px] text-hj-muted">{actionTxn.type === 'received' ? t('youGot') : t('youGave')} • {prettyDate(actionTxn.dateISO)} {actionTxn.time}{actionTxn.note ? ` • ${actionTxn.note}` : ''}</p></div>
+              </div>
+              <div className="rounded-3xl border border-hj-line overflow-hidden">
+                {[
+                  { l: t('viewReceipt'), icon: ReceiptIcon, act: () => { setLastTxn(actionTxn); setSheet(null); navigateTo('receipt') } },
+                  { l: t('shareWhatsApp'), icon: MessageCircle, act: () => { setSheet(null); shareReceipt(actionTxn) } },
+                  { l: t('deleteEntry'), icon: Trash2, danger: true, act: () => { const x = actionTxn; setSheet(null); setConfirm({ title: t('deleteEntryQ'), sub: t('deleteEntrySub'), cta: t('delete'), onYes: () => deleteTxn(x) }) } },
+                ].map((r, i) => (
+                  <button key={r.l} onClick={r.act} className={`w-full h-14 px-4 flex items-center gap-3 text-[15px] font-bold active:bg-hj-card2 ${i ? 'border-t border-hj-line' : ''} ${r.danger ? 'text-hj-give' : ''}`}><r.icon size={18} />{r.l}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </Sheet>
+
+        <Sheet open={sheet === 'about'} onClose={() => setSheet(null)} title={t('about')}>
+          <div className="text-center">
+            <Art name="private" className="w-32 h-32 mx-auto" />
+            <p className="font-display text-[22px] font-extrabold text-hj-brand">Hisab<span className="text-hj-gold">Jod</span></p>
+            <p className="text-[13px] text-hj-muted">{t('tagline')} • v2.0</p>
+            <p className="text-[14px] leading-relaxed mt-4 text-hj-ink2">{t('aboutBody')}</p>
+            <a href="/privacy/" className="inline-block mt-4 text-[14px] font-bold text-hj-brand underline underline-offset-4">{t('privacyPolicy')}</a>
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'rate'} onClose={() => { setSheet(null); localStorage.setItem('hisabjod-rated', 'later') }}>
+          <div className="text-center pt-2">
+            <div className="flex justify-center gap-1 text-hj-gold">{[0, 1, 2, 3, 4].map(i => <Star key={i} size={30} className="fill-current pop-enter" style={{ animationDelay: `${i * 70}ms` }} />)}</div>
+            <h3 className="font-display font-extrabold text-[20px] mt-3">{t('enjoying')}</h3>
+            <p className="text-[14px] text-hj-muted mt-1">{t('rateSub')}</p>
+            <div className="grid grid-cols-2 gap-3 mt-5">
+              <PrimaryBtn tone="ghost" onClick={() => { setSheet(null); localStorage.setItem('hisabjod-rated', 'later') }}>{t('later')}</PrimaryBtn>
+              <PrimaryBtn onClick={() => { setSheet(null); localStorage.setItem('hisabjod-rated', 'yes'); window.open('https://play.google.com/store/apps/details?id=com.hisabjod.digitalkhata', '_blank') }}>{t('rateNow')}</PrimaryBtn>
+            </div>
+          </div>
+        </Sheet>
+
+        <Sheet open={sheet === 'forgot'} onClose={() => setSheet(null)} title={t('forgotPin')}>
+          <p className="text-[14px] text-hj-ink2 leading-relaxed">{t('forgotPinSub')}</p>
+          <div className="grid grid-cols-2 gap-3 mt-5">
+            <PrimaryBtn tone="ghost" onClick={() => setSheet(null)}>{t('cancel')}</PrimaryBtn>
+            <PrimaryBtn tone="give" onClick={() => { setSheet(null); setConfirm({ title: t('resetQ'), sub: t('resetSub'), cta: t('erase'), onYes: eraseAll }) }}>{t('erase')}</PrimaryBtn>
+          </div>
+        </Sheet>
+
+        {/* confirm dialog */}
+        {confirm && (
+          <div className="absolute inset-0 z-[80] flex items-center justify-center p-6">
+            <div className="fade-enter absolute inset-0 bg-[#06140d]/55" onClick={() => setConfirm(null)} />
+            <div role="alertdialog" className="pop-enter relative w-full max-w-[340px] rounded-[28px] bg-hj-card p-6 text-center shadow-hjlg">
+              <span className="w-14 h-14 mx-auto rounded-full bg-hj-givesoft text-hj-give flex items-center justify-center"><Trash2 size={24} /></span>
+              <h3 className="font-display font-extrabold text-[18px] mt-3">{confirm.title}</h3>
+              <p className="text-[13px] text-hj-muted mt-1 leading-relaxed">{confirm.sub}</p>
+              <div className="grid grid-cols-2 gap-3 mt-5">
+                <PrimaryBtn tone="ghost" onClick={() => setConfirm(null)}>{t('cancel')}</PrimaryBtn>
+                <PrimaryBtn tone="give" onClick={() => { const c = confirm; setConfirm(null); c.onYes() }}>{confirm.cta}</PrimaryBtn>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+    </div>
+  )
+}
+
+// ---------- small local components ----------
+function PinPad({ onKey, dark }: { onKey: (k: string) => void; dark?: boolean }) {
+  const cls = dark ? 'bg-white/12 text-white active:bg-white/25' : 'bg-hj-card text-hj-ink border border-hj-line shadow-hj'
+  return (
+    <div className="grid grid-cols-3 gap-3 mt-8 w-[252px]">
+      {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map(n => <button key={n} onClick={() => onKey(n)} className={`press h-16 rounded-3xl font-display text-[24px] font-bold ${cls}`}>{n}</button>)}
+      <span />
+      <button onClick={() => onKey('0')} className={`press h-16 rounded-3xl font-display text-[24px] font-bold ${cls}`}>0</button>
+      <button aria-label="Delete" onClick={() => onKey('del')} className={`press h-16 rounded-3xl flex items-center justify-center ${dark ? 'text-white' : 'text-hj-ink'}`}><Delete size={24} /></button>
+    </div>
+  )
+}
+
+function Ring({ value, label, size = 52 }: { value: number; label: string; size?: number }) {
+  const r = size / 2 - 5, c = 2 * Math.PI * r
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--hj-line)" strokeWidth={6} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--hj-brand)" strokeWidth={6} strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - value)} style={{ transition: 'stroke-dashoffset .6s' }} />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center font-display font-extrabold text-[13px]">{label}</span>
     </div>
   )
 }

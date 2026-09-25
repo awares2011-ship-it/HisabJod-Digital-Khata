@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://awares2011-ship-it.github.io/HisabJod-Digital-Khata/sitemap.xml
